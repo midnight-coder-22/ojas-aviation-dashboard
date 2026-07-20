@@ -5,120 +5,154 @@ import { DEPARTMENTS, deptToSlug, slugToDept } from '../../utils/constants'
 import { useAuth } from '../../context/AuthContext'
 
 export default function DeptSelector() {
-  const [isOpen,  setIsOpen]  = useState(false)
-  const [search,  setSearch]  = useState('')
-  const location  = useLocation()
-  const navigate  = useNavigate()
-  const { user }  = useAuth()
-  const ref       = useRef(null)
+  const [isOpen, setIsOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const ref = useRef(null)
 
-  // Determine what's currently active from URL
-  const path = location.hash.replace('#', '')
+  // HashRouter already converts /#/dashboard/cnc into pathname=/dashboard/cnc.
+  const path = location.pathname
   let activeName = ''
-  if (path.includes('/dashboard/executive')) {
+
+  if (path.startsWith('/dashboard/executive')) {
     activeName = 'Executive Dashboard'
-  } else if (path.includes('/dashboard/')) {
-    const slug = path.split('/dashboard/')[1]
-    activeName = slugToDept(slug)
+  } else if (path.startsWith('/dashboard/')) {
+    const slug = path.split('/dashboard/')[1]?.split('/')[0]
+    activeName = slug ? slugToDept(slug) : ''
   }
 
-  // Close on outside click
   useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setIsOpen(false)
+    const handlePointerDown = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setIsOpen(false)
+      }
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [])
 
-  const filteredDepts = DEPARTMENTS.filter(d =>
-    d.toLowerCase().includes(search.toLowerCase())
+  const filteredDepts = DEPARTMENTS.filter((department) =>
+    department.toLowerCase().includes(search.toLowerCase()),
   )
 
   const handleSelect = (target) => {
     setIsOpen(false)
     setSearch('')
+
     if (target === 'executive') {
       navigate('/dashboard/executive')
-    } else {
-      navigate('/dashboard/' + deptToSlug(target))
+      return
     }
+
+    navigate(`/dashboard/${deptToSlug(target)}`)
   }
 
   const canSeeExecutive = user?.role === 'Admin' || user?.role === 'Executive'
+  const triggerText =
+    activeName === 'Executive Dashboard'
+      ? activeName
+      : activeName
+        ? `${activeName} Dashboard`
+        : 'Select Department'
 
   return (
-    <div className="relative" ref={ref}>
-      {/* Trigger button */}
+    <div className="relative shrink-0" ref={ref}>
       <button
-        onClick={() => setIsOpen(o => !o)}
-        className="border border-slate-200 rounded-xl px-4 py-2 text-sm font-medium text-slate-700
-                   min-w-52 flex items-center justify-between gap-2
-                   hover:border-orange-300 transition-all"
+        type="button"
+        onClick={() => setIsOpen((value) => !value)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className="flex h-10 min-w-[164px] items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-200"
       >
-        <span className="truncate">{activeName === 'Executive Dashboard'
-  ? 'Executive Dashboard'
-  : activeName
-    ? `${activeName} Dashboard`
-    : 'Select Department'}</span>
+        <span className="max-w-[190px] truncate">{triggerText}</span>
         <ChevronDown
-          size={15}
-          className={`text-slate-400 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`}
+          size={16}
+          className={`shrink-0 text-slate-400 transition-transform ${
+            isOpen ? 'rotate-180' : ''
+          }`}
         />
       </button>
 
-      {/* Dropdown */}
       {isOpen && (
-        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 bg-white rounded-xl shadow-lg border border-slate-200 z-50 py-2">
-          {/* Search */}
+        <div className="absolute left-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-[0_18px_45px_rgba(15,23,42,0.16)]">
           <div className="px-3 pb-2">
             <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
               <input
                 autoFocus
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search departments..."
-                className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg
-                           focus:outline-none focus:border-orange-300"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-2 focus:ring-orange-100"
               />
             </div>
           </div>
 
-          {/* Executive option */}
-          {canSeeExecutive && (
-            <button
-              onClick={() => handleSelect('executive')}
-              className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-slate-50
-                ${activeName === 'Executive Dashboard'
-                  ? 'bg-orange-50 text-orange-600 font-medium'
-                  : 'text-slate-700'
-                }`}
-            >
-              {activeName === 'Executive Dashboard' && (
-                <Circle size={6} className="fill-orange-500 text-orange-500 shrink-0" />
-              )}
-              Executive Dashboard
-            </button>
-          )}
-
-          {/* Department options */}
-          {filteredDepts.map(dept => {
-            const isActive = activeName === dept
-            return (
+          <div className="max-h-80 overflow-y-auto">
+            {canSeeExecutive && (
               <button
-                key={dept}
-                onClick={() => handleSelect(dept)}
-                className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-slate-50
-                  ${isActive ? 'bg-orange-50 text-orange-600 font-medium' : 'text-slate-700'}`}
+                type="button"
+                onClick={() => handleSelect('executive')}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-slate-50 ${
+                  activeName === 'Executive Dashboard'
+                    ? 'bg-orange-50 font-semibold text-orange-700'
+                    : 'text-slate-700'
+                }`}
               >
-                {isActive && (
-                  <Circle size={6} className="fill-orange-500 text-orange-500 shrink-0" />
-                )}
-                {dept}
+                <span className="flex w-3 justify-center">
+                  {activeName === 'Executive Dashboard' && (
+                    <Circle size={7} className="fill-orange-500 text-orange-500" />
+                  )}
+                </span>
+                Executive Dashboard
               </button>
-            )
-          })}
+            )}
+
+            {filteredDepts.map((department) => {
+              const isActive = activeName === department
+
+              return (
+                <button
+                  type="button"
+                  key={department}
+                  onClick={() => handleSelect(department)}
+                  className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-slate-50 ${
+                    isActive
+                      ? 'bg-orange-50 font-semibold text-orange-700'
+                      : 'text-slate-700'
+                  }`}
+                >
+                  <span className="flex w-3 justify-center">
+                    {isActive && (
+                      <Circle size={7} className="fill-orange-500 text-orange-500" />
+                    )}
+                  </span>
+                  {department}
+                </button>
+              )
+            })}
+
+            {filteredDepts.length === 0 && (
+              <p className="px-4 py-5 text-center text-sm text-slate-400">
+                No department found
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>

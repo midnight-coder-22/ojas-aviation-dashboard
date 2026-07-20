@@ -1,214 +1,283 @@
-import { useContext } from 'react'
+import { useContext, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  Bell, Flag, ShieldCheck, CheckCircle, RotateCw,
-  Loader2, Maximize2, Minimize2, X, FileSpreadsheet,
+  Bell,
+  Flag,
+  ShieldCheck,
+  CheckCircle,
+  RotateCw,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  X,
+  Database,
+  Plane,
 } from 'lucide-react'
-
-import { useAuth }        from '../../context/AuthContext'
-import { useDashboard }   from '../../context/DashboardContext'
-import { ToastContext }   from '../../context/ToastContext'
+import { useAuth } from '../../context/AuthContext'
+import { useDashboard } from '../../context/DashboardContext'
+import { ToastContext } from '../../context/ToastContext'
 import { raiseFlags, resolveFlags } from '../../api/flags'
 import DeptSelector from './DeptSelector'
-import ProfileMenu  from './ProfileMenu'
+import ProfileMenu from './ProfileMenu'
+
+const BRAND_ORANGE = '#f05a00'
 
 export default function TopNav() {
-  const { user }      = useAuth()
-  const db            = useDashboard()
-  const navigate      = useNavigate()
-  const queryClient   = useQueryClient()
+  const { user } = useAuth()
+  const db = useDashboard()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const queryClient = useQueryClient()
   const { showToast } = useContext(ToastContext)
 
-  // Detect if we are on a department dashboard page (not executive)
-  const path = useLocation().hash.replace('#', '')
-  const isOnDeptDashboard = path.startsWith('/dashboard/') && !path.includes('/executive')
+  // HashRouter exposes the route as pathname, not location.hash.
+  // Using location.hash here caused the selector to show "Select Department"
+  // and hid all department action buttons on /#/dashboard/:dept.
+  const path = location.pathname
+  const isOnDeptDashboard =
+    path.startsWith('/dashboard/') && !path.startsWith('/dashboard/executive')
 
-  // Refresh the current department's data
-  const handleRefresh = () => {
+  const notificationCount = useMemo(
+    () => db.workOrders.filter((row) => row.has_active_flag).length,
+    [db.workOrders],
+  )
+
+  const invalidateCurrentDepartment = () => {
     if (!db.currentDept) return
-    db.setIsRefreshing(true)
-    queryClient.invalidateQueries(['dept-data',    db.currentDept])
-    queryClient.invalidateQueries(['dept-summary', db.currentDept])
-    queryClient.invalidateQueries(['flags',        db.currentDept])
-    setTimeout(() => db.setIsRefreshing(false), 1500)
+
+    queryClient.invalidateQueries({ queryKey: ['dept-data', db.currentDept] })
+    queryClient.invalidateQueries({ queryKey: ['dept-summary', db.currentDept] })
+    queryClient.invalidateQueries({ queryKey: ['flags', db.currentDept] })
   }
 
-  // Done button — raises or resolves depending on current mode
+  const handleRefresh = () => {
+    if (!db.currentDept || db.isRefreshing) return
+
+    db.setIsRefreshing(true)
+    invalidateCurrentDepartment()
+    window.setTimeout(() => db.setIsRefreshing(false), 1500)
+  }
+
   const handleDone = async () => {
     if (db.flagMode === 'add') {
-      // Only newly selected rows (not the ones already flagged before Add mode started)
-      const newIds = [...db.selectedWoIds].filter(id => !db.preExistingIds.has(id))
-      if (newIds.length === 0) { db.cancelFlag(); return }
-      try {
-        const result = await raiseFlags({ wo_ids: newIds, department: db.currentDept })
-        showToast(result.message || `${newIds.length} flag(s) raised.`, 'success')
-        queryClient.invalidateQueries(['dept-data',    db.currentDept])
-        queryClient.invalidateQueries(['dept-summary', db.currentDept])
-      } catch (e) {
-        showToast(e.response?.data?.detail || 'Failed to raise flags.', 'error')
+      const newIds = [...db.selectedWoIds].filter(
+        (id) => !db.preExistingIds.has(id),
+      )
+
+      if (newIds.length === 0) {
+        db.cancelFlag()
+        return
       }
+
+      try {
+        const result = await raiseFlags({
+          wo_ids: newIds,
+          department: db.currentDept,
+        })
+        showToast(result.message || `${newIds.length} flag(s) raised.`, 'success')
+        invalidateCurrentDepartment()
+      } catch (error) {
+        showToast(
+          error.response?.data?.detail || 'Failed to raise flags.',
+          'error',
+        )
+      }
+
       db.cancelFlag()
-    } else if (db.flagMode === 'resolve') {
-      if (db.selectedWoIds.size === 0) { db.cancelFlag(); return }
+      return
+    }
+
+    if (db.flagMode === 'resolve') {
+      if (db.selectedWoIds.size === 0) {
+        db.cancelFlag()
+        return
+      }
+
       try {
         const result = await resolveFlags({ wo_ids: [...db.selectedWoIds] })
-        showToast(result.message || `${db.selectedWoIds.size} flag(s) resolved.`, 'success')
-        queryClient.invalidateQueries(['dept-data',    db.currentDept])
-        queryClient.invalidateQueries(['dept-summary', db.currentDept])
-      } catch (e) {
-        showToast(e.response?.data?.detail || 'Failed to resolve flags.', 'error')
+        showToast(
+          result.message || `${db.selectedWoIds.size} flag(s) resolved.`,
+          'success',
+        )
+        invalidateCurrentDepartment()
+      } catch (error) {
+        showToast(
+          error.response?.data?.detail || 'Failed to resolve flags.',
+          'error',
+        )
       }
+
       db.cancelFlag()
     }
   }
 
-  return (
-    <header className="fixed top-0 left-0 right-0 h-11 bg-white border-b border-slate-200 z-50">
-      <div className="h-full px-4 flex items-center gap-2">
+  const neutralActionClass =
+    'h-9 rounded-xl bg-slate-100 px-3.5 text-sm font-medium text-slate-700 ' +
+    'flex items-center gap-2 whitespace-nowrap transition-colors ' +
+    'hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40'
 
-        {/* ── LOGO ── */}
-        <div className="flex items-center gap-1.5 shrink-0 mr-1">
-          <div className="w-6 h-6 bg-orange-500 rounded-md flex items-center justify-center shrink-0">
-            <span className="text-white text-xs font-bold leading-none">OA</span>
+  const primaryActionClass =
+    'h-9 rounded-xl px-3.5 text-sm font-semibold text-white ' +
+    'flex items-center gap-2 whitespace-nowrap transition-colors ' +
+    'shadow-[0_1px_2px_rgba(15,23,42,0.12)]'
+
+  return (
+    <header className="fixed inset-x-0 top-0 z-50 h-16 border-b border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+      <div className="flex h-full min-w-0 items-center px-5">
+        <div className="flex shrink-0 items-center gap-3">
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm"
+            style={{ backgroundColor: BRAND_ORANGE }}
+            aria-hidden="true"
+          >
+            <Plane size={20} strokeWidth={2.15} className="-rotate-45" />
           </div>
-          <span className="text-sm font-bold text-slate-900 whitespace-nowrap">Ojas Aviation</span>
+          <span className="whitespace-nowrap text-base font-bold tracking-[-0.015em] text-slate-950">
+            Ojas Aviation
+          </span>
         </div>
 
-        {/* ── DEPARTMENT SELECTOR ── */}
+        <div className="mx-3 h-8 w-px shrink-0 bg-slate-200" />
+
         <DeptSelector />
 
-        {/* ── ACTION BUTTONS (only on department dashboards) ── */}
         {isOnDeptDashboard && (
-          <div className="flex items-center gap-1.5">
+          <div className="mx-3 h-8 w-px shrink-0 bg-slate-200" />
+        )}
 
-            {/* Edit Data */}
+        {isOnDeptDashboard && (
+          <div className="flex min-w-0 items-center gap-2">
             {user?.can_edit_data && (
               <button
+                type="button"
                 onClick={() => navigate('/edit-data')}
-                className="bg-orange-500 hover:bg-orange-600 text-white rounded-lg
-                           px-2.5 py-1 text-xs font-semibold flex items-center gap-1
-                           transition-colors shrink-0"
+                className={`${primaryActionClass} hover:brightness-95`}
+                style={{ backgroundColor: BRAND_ORANGE }}
               >
-                <FileSpreadsheet size={12} />
+                <Database size={16} strokeWidth={2} />
                 Edit Data
               </button>
             )}
 
-            {/* Add Flag */}
-            {user?.can_flag && (
-              db.flagMode === 'add' ? (
-                <div className="flex items-center gap-1.5">
+            {user?.can_flag &&
+              (db.flagMode === 'add' ? (
+                <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={handleDone}
-                    className="bg-orange-500 text-white rounded-lg px-2.5 py-1
-                               text-xs font-semibold flex items-center gap-1 shrink-0"
+                    className={primaryActionClass}
+                    style={{ backgroundColor: BRAND_ORANGE }}
                   >
-                    <CheckCircle size={12} /> Done
+                    <CheckCircle size={16} />
+                    Done
                   </button>
                   <button
+                    type="button"
                     onClick={db.cancelFlag}
-                    className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 shrink-0"
+                    className={neutralActionClass}
                   >
-                    <X size={11} /> Cancel
+                    <X size={15} />
+                    Cancel
                   </button>
                 </div>
               ) : (
                 <button
+                  type="button"
                   onClick={db.startAddMode}
                   disabled={db.flagMode === 'resolve'}
-                  className="border border-slate-200 text-slate-600 rounded-lg
-                             px-2.5 py-1 text-xs font-medium flex items-center gap-1
-                             hover:bg-slate-50 disabled:opacity-40 transition-colors shrink-0"
+                  className={neutralActionClass}
                 >
-                  <Flag size={12} /> Add Flag
+                  <Flag size={16} />
+                  Add Flag
                 </button>
-              )
-            )}
+              ))}
 
-            {/* Resolve Flag */}
-            {user?.can_resolve_flag && (
-              db.flagMode === 'resolve' ? (
-                <div className="flex items-center gap-1.5">
+            {user?.can_resolve_flag &&
+              (db.flagMode === 'resolve' ? (
+                <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={handleDone}
-                    className="bg-green-500 text-white rounded-lg px-2.5 py-1
-                               text-xs font-semibold flex items-center gap-1 shrink-0"
+                    className={`${primaryActionClass} bg-emerald-600 hover:bg-emerald-700`}
                   >
-                    <CheckCircle size={12} /> Done
+                    <CheckCircle size={16} />
+                    Done
                   </button>
                   <button
+                    type="button"
                     onClick={db.cancelFlag}
-                    className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 shrink-0"
+                    className={neutralActionClass}
                   >
-                    <X size={11} /> Cancel
+                    <X size={15} />
+                    Cancel
                   </button>
                 </div>
               ) : (
                 <button
+                  type="button"
                   onClick={db.startResolveMode}
                   disabled={db.flagMode === 'add'}
-                  className="border border-slate-200 text-slate-600 rounded-lg
-                             px-2.5 py-1 text-xs font-medium flex items-center gap-1
-                             hover:bg-slate-50 disabled:opacity-40 transition-colors shrink-0"
+                  className={neutralActionClass}
                 >
-                  <ShieldCheck size={12} /> Resolve Flag
+                  <ShieldCheck size={16} />
+                  Resolve Flag
                 </button>
-              )
-            )}
+              ))}
           </div>
         )}
 
-        {/* ── SPACER ── */}
-        <div className="flex-1" />
-
-        {/* ── RIGHT ICONS ── */}
-        <div className="flex items-center gap-0.5">
-
-          {/* Refresh icon */}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-3">
           {isOnDeptDashboard && (
             <button
+              type="button"
               onClick={handleRefresh}
               title="Refresh data"
-              className="w-7 h-7 flex items-center justify-center rounded-lg
-                         hover:bg-slate-100 text-slate-500 transition-colors"
+              aria-label="Refresh data"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
             >
-              {db.isRefreshing
-                ? <Loader2 size={14} className="animate-spin" />
-                : <RotateCw size={14} />
-              }
+              {db.isRefreshing ? (
+                <Loader2 size={17} className="animate-spin" />
+              ) : (
+                <RotateCw size={17} />
+              )}
             </button>
           )}
 
-          {/* Fullscreen icon */}
           {isOnDeptDashboard && (
             <button
-              onClick={() => db.setIsFullscreen(f => !f)}
+              type="button"
+              onClick={() => db.setIsFullscreen((value) => !value)}
               title={db.isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
-              className="w-7 h-7 flex items-center justify-center rounded-lg
-                         hover:bg-slate-100 text-slate-500 transition-colors"
+              aria-label={db.isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
             >
-              {db.isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              {db.isFullscreen ? (
+                <Minimize2 size={17} />
+              ) : (
+                <Maximize2 size={17} />
+              )}
             </button>
           )}
 
-          {/* Notification bell */}
           <div className="relative">
-            <button className="w-7 h-7 flex items-center justify-center rounded-lg
-                               hover:bg-slate-100 text-slate-500 transition-colors">
-              <Bell size={14} />
+            <button
+              type="button"
+              aria-label="Notifications"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            >
+              <Bell size={17} />
             </button>
-            <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white
-                             rounded-full w-3.5 h-3.5 flex items-center justify-center
-                             text-[9px] font-bold leading-none">
-              0
-            </span>
+
+            {notificationCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                {notificationCount > 99 ? '99+' : notificationCount}
+              </span>
+            )}
           </div>
 
-          {/* Profile avatar */}
           <ProfileMenu />
         </div>
-
       </div>
     </header>
   )

@@ -1,19 +1,16 @@
-import TopNav         from './TopNav'
+import TopNav from './TopNav'
 import ToastContainer from '../ui/ToastContainer'
 
 export default function AppLayout({ children }) {
   return (
-    // h-screen + flex-col = full viewport, no body scroll
-    <div className="h-screen flex flex-col bg-white overflow-hidden">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#f7f8fa]">
       <TopNav />
-      {/*
-        pt-11 = clears the fixed nav (h-11 = 44px)
-        flex-1 flex flex-col overflow-hidden = fills remaining height
-        Children must use flex-col structure to let table expand
-      */}
-      <div className="flex-1 flex flex-col overflow-hidden pt-11">
+
+      {/* h-16 header offset; child dashboard sizing and widget ratios are unchanged. */}
+      <div className="flex flex-1 flex-col overflow-hidden pt-16">
         {children}
       </div>
+
       <ToastContainer />
     </div>
   )
