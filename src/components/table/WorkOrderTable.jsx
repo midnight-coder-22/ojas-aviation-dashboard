@@ -1,309 +1,1050 @@
-import { useState, useMemo } from 'react'
-import { ChevronUp, ChevronDown, Flag } from 'lucide-react'
-import StatusBadge   from '../ui/StatusBadge'
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+import {
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+} from 'lucide-react'
+
+import StatusBadge from '../ui/StatusBadge'
 import PriorityBadge from '../ui/PriorityBadge'
-import ExpandedRow   from './ExpandedRow'
-import { formatDate }            from '../../utils/formatters'
-import { formatAgeingCompact }   from '../../utils/formatters'
-import { ageingColor }           from '../../utils/formatters'
+import ExpandedRow from './ExpandedRow'
+import {
+  formatAgeingCompact,
+  formatDate,
+} from '../../utils/formatters'
 
 const ROWS_OPTIONS = [10, 25, 50]
-const SORTABLE     = ['wo_id','wo_name','status','priority','wo_ageing_days','dept_ageing_days','planned_qty']
 
-// Small alert badge used inside the Alerts column
+const SORTABLE_FIELDS = new Set([
+  'wo_id',
+  'wo_name',
+  'dept_in_date',
+  'wo_ageing_days',
+  'dept_ageing_days',
+  'planned_qty',
+  'next_dept',
+  'priority',
+  'status',
+])
+
+const NUMERIC_FIELDS = new Set([
+  'wo_ageing_days',
+  'dept_ageing_days',
+  'planned_qty',
+])
+
+function normalizeText(value) {
+  return String(value ?? '').trim()
+}
+
+function normalizeWoId(value) {
+  return normalizeText(value)
+}
+
+function isActiveFlag(value) {
+  if (value === true || value === 1) {
+    return true
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value
+      .trim()
+      .toLowerCase()
+
+    return [
+      'true',
+      '1',
+      'yes',
+      'y',
+      'active',
+    ].includes(normalized)
+  }
+
+  return false
+}
+
+function formatQuantity(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    normalizeText(value) === ''
+  ) {
+    return '—'
+  }
+
+  const numericValue = Number(value)
+
+  if (Number.isFinite(numericValue)) {
+    return numericValue.toLocaleString()
+  }
+
+  return String(value)
+}
+
+function compareValues(
+  firstRow,
+  secondRow,
+  field,
+  direction,
+) {
+  const multiplier =
+    direction === 'asc' ? 1 : -1
+
+  if (NUMERIC_FIELDS.has(field)) {
+    const firstNumber = Number(
+      firstRow?.[field],
+    )
+    const secondNumber = Number(
+      secondRow?.[field],
+    )
+
+    const firstIsValid =
+      Number.isFinite(firstNumber)
+    const secondIsValid =
+      Number.isFinite(secondNumber)
+
+    if (firstIsValid && secondIsValid) {
+      return (
+        (firstNumber - secondNumber) *
+        multiplier
+      )
+    }
+
+    if (firstIsValid) return -1
+    if (secondIsValid) return 1
+  }
+
+  if (field === 'dept_in_date') {
+    const firstTime = Date.parse(
+      firstRow?.[field] ?? '',
+    )
+    const secondTime = Date.parse(
+      secondRow?.[field] ?? '',
+    )
+
+    const firstIsValid =
+      Number.isFinite(firstTime)
+    const secondIsValid =
+      Number.isFinite(secondTime)
+
+    if (firstIsValid && secondIsValid) {
+      return (
+        (firstTime - secondTime) *
+        multiplier
+      )
+    }
+
+    if (firstIsValid) return -1
+    if (secondIsValid) return 1
+  }
+
+  const firstText = normalizeText(
+    firstRow?.[field],
+  )
+  const secondText = normalizeText(
+    secondRow?.[field],
+  )
+
+  return (
+    firstText.localeCompare(
+      secondText,
+      undefined,
+      {
+        numeric: true,
+        sensitivity: 'base',
+      },
+    ) * multiplier
+  )
+}
+
 function AlertBadge({ type }) {
   const styles = {
-    MI:  { bg: 'bg-orange-100 text-orange-700', label: 'MI'  },
-    QC:  { bg: 'bg-blue-100 text-blue-700',     label: 'QC'  },
+    MI: {
+      className:
+        'bg-orange-100 text-orange-700',
+      label: 'MI',
+    },
+    QC: {
+      className:
+        'bg-blue-100 text-blue-700',
+      label: 'QC',
+    },
   }
-  const s = styles[type]
-  if (!s) return null
+
+  const style = styles[type]
+
+  if (!style) return null
+
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold ${s.bg}`}>
-      {s.label}
+    <span
+      className={`
+        inline-flex items-center
+        rounded-md px-1.5 py-0.5
+        text-xs font-semibold
+        ${style.className}
+      `}
+    >
+      {style.label}
     </span>
   )
 }
 
 export default function WorkOrderTable({
-  data          = [],
-  flagMode      = null,
+  data = [],
+  flagMode = null,
   selectedWoIds = new Set(),
-  onRowSelect   = () => {},
-  searchText    = '',
+  onRowSelect = () => {},
+  searchText = '',
 }) {
-  const [sortField, setSortField] = useState('wo_ageing_days')
-  const [sortDir,   setSortDir]   = useState('desc')
-  const [page,      setPage]      = useState(1)
-  const [perPage,   setPerPage]   = useState(10)
-  const [expanded,  setExpanded]  = useState(null)
+  const [sortField, setSortField] =
+    useState('wo_ageing_days')
+
+  const [sortDir, setSortDir] =
+    useState('desc')
+
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] =
+    useState(10)
+
+  const [expanded, setExpanded] =
+    useState(null)
+
+  const normalizedSelectedWoIds =
+    useMemo(
+      () =>
+        new Set(
+          Array.from(
+            selectedWoIds ?? [],
+          ).map(normalizeWoId),
+        ),
+      [selectedWoIds],
+    )
+
+  const filtered = useMemo(() => {
+    const query = normalizeText(
+      searchText,
+    ).toLowerCase()
+
+    if (!query) {
+      return data
+    }
+
+    return data.filter((row) => {
+      const woId = normalizeText(
+        row?.wo_id,
+      ).toLowerCase()
+
+      const woName = normalizeText(
+        row?.wo_name,
+      ).toLowerCase()
+
+      return (
+        woId.includes(query) ||
+        woName.includes(query)
+      )
+    })
+  }, [data, searchText])
+
+  const sorted = useMemo(
+    () =>
+      [...filtered].sort(
+        (firstRow, secondRow) =>
+          compareValues(
+            firstRow,
+            secondRow,
+            sortField,
+            sortDir,
+          ),
+      ),
+    [
+      filtered,
+      sortDir,
+      sortField,
+    ],
+  )
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(
+      sorted.length / perPage,
+    ),
+  )
+
+  useEffect(() => {
+    setPage((currentPage) =>
+      Math.min(
+        Math.max(currentPage, 1),
+        totalPages,
+      ),
+    )
+  }, [totalPages])
+
+  useEffect(() => {
+    setPage(1)
+  }, [searchText])
+
+  useEffect(() => {
+    if (flagMode) {
+      setExpanded(null)
+    }
+  }, [flagMode])
+
+  const pageStart =
+    (page - 1) * perPage
+
+  const pageData = sorted.slice(
+    pageStart,
+    pageStart + perPage,
+  )
+
+  const showingStart =
+    sorted.length === 0
+      ? 0
+      : pageStart + 1
+
+  const showingEnd = Math.min(
+    pageStart + perPage,
+    sorted.length,
+  )
 
   const handleSort = (field) => {
-    if (!SORTABLE.includes(field)) return
-    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortField(field); setSortDir('desc') }
+    if (!SORTABLE_FIELDS.has(field)) {
+      return
+    }
+
+    if (sortField === field) {
+      setSortDir(
+        (currentDirection) =>
+          currentDirection === 'asc'
+            ? 'desc'
+            : 'asc',
+      )
+    } else {
+      setSortField(field)
+      setSortDir('desc')
+    }
+
     setPage(1)
   }
 
-  const filtered = useMemo(() => {
-    if (!searchText) return data
-    const q = searchText.toLowerCase()
-    return data.filter(r =>
-      r.wo_id?.toLowerCase().includes(q) ||
-      r.wo_name?.toLowerCase().includes(q)
-    )
-  }, [data, searchText])
-
-  const sorted = useMemo(() => (
-    [...filtered].sort((a, b) => {
-      const av = a[sortField] ?? ''
-      const bv = b[sortField] ?? ''
-      if (av < bv) return sortDir === 'asc' ? -1 : 1
-      if (av > bv) return sortDir === 'asc' ?  1 : -1
-      return 0
-    })
-  ), [filtered, sortField, sortDir])
-
-  const totalPages = Math.ceil(sorted.length / perPage)
-  const pageData   = sorted.slice((page - 1) * perPage, page * perPage)
-
   const handleRowClick = (row) => {
+    const rowIsFlagged =
+      isActiveFlag(
+        row?.has_active_flag,
+      )
+
     if (flagMode === 'add') {
-      if (row.has_active_flag) return
-      onRowSelect(row.wo_id)
-    } else if (flagMode === 'resolve') {
-      if (!row.has_active_flag) return
-      onRowSelect(row.wo_id)
-    } else {
-      setExpanded(prev => prev === row.wo_id ? null : row.wo_id)
+      if (!rowIsFlagged) {
+        onRowSelect(row.wo_id)
+      }
+
+      return
     }
+
+    if (flagMode === 'resolve') {
+      if (rowIsFlagged) {
+        onRowSelect(row.wo_id)
+      }
+
+      return
+    }
+
+    setExpanded(
+      (currentWoId) =>
+        currentWoId === row.wo_id
+          ? null
+          : row.wo_id,
+    )
   }
 
   const getRowClass = (row) => {
-    let base = 'border-b border-slate-100 cursor-pointer transition-colors '
+    const rowIsFlagged =
+      isActiveFlag(
+        row?.has_active_flag,
+      )
+
+    const rowIsSelected =
+      normalizedSelectedWoIds.has(
+        normalizeWoId(row?.wo_id),
+      )
+
+    let className =
+      'border-b border-slate-100 transition-colors '
+
     if (flagMode === 'add') {
-      if (row.has_active_flag) return base + 'bg-amber-50 border-l-2 border-amber-400 cursor-not-allowed'
-      if (selectedWoIds.has(row.wo_id)) return base + 'bg-orange-50 border-l-2 border-orange-400'
-      return base + 'hover:bg-orange-50'
+      if (rowIsFlagged) {
+        return (
+          className +
+          'cursor-not-allowed border-l-2 border-red-400 bg-red-50'
+        )
+      }
+
+      if (rowIsSelected) {
+        return (
+          className +
+          'cursor-pointer border-l-2 border-orange-400 bg-orange-50'
+        )
+      }
+
+      return (
+        className +
+        'cursor-pointer hover:bg-orange-50'
+      )
     }
+
     if (flagMode === 'resolve') {
-      if (!row.has_active_flag) return base + 'opacity-30 cursor-not-allowed'
-      return selectedWoIds.has(row.wo_id)
-        ? base + 'bg-green-50 border-l-2 border-green-400'
-        : base + 'bg-amber-50 border-l-2 border-amber-400'
+      if (!rowIsFlagged) {
+        return (
+          className +
+          'cursor-not-allowed opacity-30'
+        )
+      }
+
+      if (rowIsSelected) {
+        return (
+          className +
+          'cursor-pointer border-l-2 border-green-400 bg-green-50'
+        )
+      }
+
+      return (
+        className +
+        'cursor-pointer border-l-2 border-red-400 bg-red-50'
+      )
     }
-    if (row.has_active_flag) base += 'border-l-2 border-amber-400 '
-    return base + 'hover:bg-slate-50'
+
+    if (rowIsFlagged) {
+      className +=
+        'border-l-2 border-red-400 '
+    }
+
+    return (
+      className +
+      'cursor-pointer hover:bg-slate-50'
+    )
   }
 
   const SortIcon = ({ field }) => {
-    if (sortField !== field) return null
-    return sortDir === 'asc'
-      ? <ChevronUp size={11} className="inline ml-0.5 text-orange-500" />
-      : <ChevronDown size={11} className="inline ml-0.5 text-orange-500" />
+    if (sortField !== field) {
+      return null
+    }
+
+    return sortDir === 'asc' ? (
+      <ChevronUp
+        size={11}
+        className="
+          ml-0.5 inline
+          text-orange-500
+        "
+      />
+    ) : (
+      <ChevronDown
+        size={11}
+        className="
+          ml-0.5 inline
+          text-orange-500
+        "
+      />
+    )
   }
 
-  const TH = ({ field, children, className = '' }) => (
-    <th
-      onClick={() => handleSort(field)}
-      className={`px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500
-        whitespace-nowrap select-none
-        ${SORTABLE.includes(field) ? 'cursor-pointer hover:text-slate-800' : ''}
-        ${className}`}
-    >
-      {children} <SortIcon field={field} />
-    </th>
-  )
+  const TableHeader = ({
+    field,
+    children,
+    className = '',
+    align = 'left',
+  }) => {
+    const isSortable =
+      SORTABLE_FIELDS.has(field)
+
+    const alignmentClass =
+      align === 'right'
+        ? 'text-right'
+        : align === 'center'
+          ? 'text-center'
+          : 'text-left'
+
+    return (
+      <th
+        scope="col"
+        onClick={() =>
+          handleSort(field)
+        }
+        className={`
+          whitespace-nowrap
+          px-3 py-3
+          text-xs font-semibold
+          uppercase tracking-wide
+          text-slate-500
+          ${alignmentClass}
+          ${
+            isSortable
+              ? 'cursor-pointer select-none hover:text-slate-800'
+              : ''
+          }
+          ${className}
+        `}
+      >
+        {children}
+
+        {isSortable && (
+          <SortIcon field={field} />
+        )}
+      </th>
+    )
+  }
 
   return (
-    <div>
-      {/* Alert legend above table */}
-      <div className="flex items-center justify-end gap-3 mb-3 text-xs text-slate-500">
-        {/* <span className="font-medium">Alerts:</span> */}
-        {/* <span className="flex items-center gap-1 bg-orange-100 text-orange-700 rounded-md px-2 py-0.5 font-semibold">
-          MI — Maint. Issue
-        </span> */}
-        {/* <span className="flex items-center gap-1 bg-blue-100 text-blue-700 rounded-md px-2 py-0.5 font-semibold">
-          QC — Quality Check
-        </span> */}
-      </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
+    <div className="min-w-0">
+      <div
+        className="
+          overflow-x-auto
+          rounded-xl
+          border border-slate-200
+        "
+      >
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-slate-50 z-10">
-            <tr className="border-b border-slate-200">
-              <TH field="wo_id">WO ID</TH>
-              <TH field="wo_name">WO Name</TH>
-              <TH field="dept_in_date">In Date</TH>
-              <TH field="wo_ageing_days">WO Ageing</TH>
-              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">
+          <thead
+            className="
+              sticky top-0 z-10
+              bg-slate-50
+            "
+          >
+            <tr
+              className="
+                border-b
+                border-slate-200
+              "
+            >
+              <TableHeader field="wo_id">
+                WO ID
+              </TableHeader>
+
+              <TableHeader field="wo_name">
+                WO Name
+              </TableHeader>
+
+              <TableHeader field="dept_in_date">
+                In Date
+              </TableHeader>
+
+              <TableHeader field="wo_ageing_days">
+                WO Ageing
+              </TableHeader>
+
+              <th
+                scope="col"
+                className="
+                  whitespace-nowrap
+                  px-3 py-3
+                  text-left text-xs
+                  font-semibold uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
                 WO Target Date
               </th>
-              <TH field="dept_ageing_days">Dept Ageing</TH>
-              <TH field="planned_qty" className="text-right">Planned Qty</TH>
-              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+
+              <TableHeader field="dept_ageing_days">
+                Dept Ageing
+              </TableHeader>
+
+              <TableHeader
+                field="planned_qty"
+                align="right"
+              >
+                Planned Qty
+              </TableHeader>
+
+              <TableHeader field="next_dept">
                 Next Department
-              </th>
-              <TH field="priority">Priority</TH>
-              <TH field="status">Status</TH>
-              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              </TableHeader>
+
+              <TableHeader field="priority">
+                Priority
+              </TableHeader>
+
+              <TableHeader field="status">
+                Status
+              </TableHeader>
+
+              <th
+                scope="col"
+                className="
+                  px-3 py-3
+                  text-left text-xs
+                  font-semibold uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
                 Alerts
               </th>
-              <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+
+              <th
+                scope="col"
+                className="
+                  px-3 py-3
+                  text-center text-xs
+                  font-semibold uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
                 Flags
               </th>
             </tr>
           </thead>
+
           <tbody>
-            {pageData.map((row) => (
-              <>
-                <tr
-                  key={row.wo_id}
-                  onClick={() => handleRowClick(row)}
-                  className={getRowClass(row)}
+            {pageData.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={12}
+                  className="
+                    px-4 py-10
+                    text-center text-sm
+                    text-slate-400
+                  "
                 >
-                  {/* WO ID — bold black matching Figma */}
-                  <td className="px-3 py-3">
-                    <span className="font-bold text-slate-800 text-xs tracking-wide">
-                      {row.wo_id}
-                    </span>
-                  </td>
+                  No matching work orders.
+                </td>
+              </tr>
+            ) : (
+              pageData.map(
+                (row, rowIndex) => {
+                  const rowIsFlagged =
+                    isActiveFlag(
+                      row?.has_active_flag,
+                    )
 
-                  {/* WO Name */}
-                  <td className="px-3 py-3 max-w-44">
-                    <span className="text-sm text-slate-700 truncate block" title={row.wo_name}>
-                      {row.wo_name}
-                    </span>
-                  </td>
+                  const rowKey =
+                    normalizeWoId(
+                      row?.wo_id,
+                    ) ||
+                    `${page}-${rowIndex}`
 
-                  {/* In Date */}
-                  <td className="px-3 py-3 text-sm text-slate-600 whitespace-nowrap">
-                    {formatDate(row.dept_in_date)}
-                  </td>
+                  const rowIsSelected =
+                    normalizedSelectedWoIds.has(
+                      normalizeWoId(
+                        row?.wo_id,
+                      ),
+                    )
 
-                  {/* WO Ageing — compact "675d" */}
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    <span className={`text-sm font-semibold ${
-                      row.wo_ageing_days > 30
-                        ? 'text-red-500'
-                        : row.wo_ageing_days > 14
-                          ? 'text-amber-500'
-                          : 'text-slate-600'
-                    }`}>
-                      {formatAgeingCompact(row.wo_ageing_days)}
-                    </span>
-                  </td>
+                  return (
+                    <Fragment key={rowKey}>
+                      <tr
+                        onClick={() =>
+                          handleRowClick(
+                            row,
+                          )
+                        }
+                        className={getRowClass(
+                          row,
+                        )}
+                        aria-selected={
+                          rowIsSelected ||
+                          undefined
+                        }
+                      >
+                        <td className="px-3 py-3">
+                          <span
+                            className="
+                              text-xs font-bold
+                              tracking-wide
+                              text-slate-800
+                            "
+                          >
+                            {normalizeText(
+                              row?.wo_id,
+                            ) || '—'}
+                          </span>
+                        </td>
 
-                  {/* WO Target Date — always "—" since not in our data */}
-                  <td className="px-3 py-3 text-sm text-slate-400">—</td>
+                        <td
+                          className="
+                            max-w-44
+                            px-3 py-3
+                          "
+                        >
+                          <span
+                            className="
+                              block truncate
+                              text-sm
+                              text-slate-700
+                            "
+                            title={normalizeText(
+                              row?.wo_name,
+                            )}
+                          >
+                            {normalizeText(
+                              row?.wo_name,
+                            ) || '—'}
+                          </span>
+                        </td>
 
-                  {/* Dept Ageing — compact */}
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    <span className={`text-sm font-semibold ${
-                      row.dept_ageing_days > 14
-                        ? 'text-red-500'
-                        : row.dept_ageing_days > 7
-                          ? 'text-amber-500'
-                          : row.dept_ageing_days !== null
-                            ? 'text-slate-600'
-                            : 'text-slate-400'
-                    }`}>
-                      {formatAgeingCompact(row.dept_ageing_days)}
-                    </span>
-                  </td>
+                        <td
+                          className="
+                            whitespace-nowrap
+                            px-3 py-3
+                            text-sm
+                            text-slate-600
+                          "
+                        >
+                          {formatDate(
+                            row?.dept_in_date,
+                          )}
+                        </td>
 
-                  {/* Planned Qty */}
-                  <td className="px-3 py-3 text-sm text-slate-700 text-right">
-                    {row.planned_qty?.toLocaleString()}
-                  </td>
+                        <td
+                          className="
+                            whitespace-nowrap
+                            px-3 py-3
+                          "
+                        >
+                          <span
+                            className={`
+                              text-sm
+                              font-semibold
+                              ${
+                                Number(
+                                  row?.wo_ageing_days,
+                                ) > 30
+                                  ? 'text-red-500'
+                                  : Number(
+                                        row?.wo_ageing_days,
+                                      ) > 14
+                                    ? 'text-amber-500'
+                                    : 'text-slate-600'
+                              }
+                            `}
+                          >
+                            {formatAgeingCompact(
+                              row?.wo_ageing_days,
+                            )}
+                          </span>
+                        </td>
 
-                  {/* Next Department */}
-                  <td className="px-3 py-3">
-                    {row.next_dept
-                      ? (
-                        <span className="bg-slate-100 text-slate-700 rounded-md px-2 py-1
-                                         text-xs font-semibold uppercase tracking-wide">
-                          {row.next_dept}
-                        </span>
-                      )
-                      : <span className="text-slate-300">—</span>
-                    }
-                  </td>
+                        <td
+                          className="
+                            px-3 py-3
+                            text-sm
+                            text-slate-400
+                          "
+                        >
+                          —
+                        </td>
 
-                  {/* Priority */}
-                  <td className="px-3 py-3">
-                    <PriorityBadge priority={row.priority} />
-                  </td>
+                        <td
+                          className="
+                            whitespace-nowrap
+                            px-3 py-3
+                          "
+                        >
+                          <span
+                            className={`
+                              text-sm
+                              font-semibold
+                              ${
+                                Number(
+                                  row?.dept_ageing_days,
+                                ) > 14
+                                  ? 'text-red-500'
+                                  : Number(
+                                        row?.dept_ageing_days,
+                                      ) > 7
+                                    ? 'text-amber-500'
+                                    : row?.dept_ageing_days !==
+                                          null &&
+                                        row?.dept_ageing_days !==
+                                          undefined
+                                      ? 'text-slate-600'
+                                      : 'text-slate-400'
+                              }
+                            `}
+                          >
+                            {formatAgeingCompact(
+                              row?.dept_ageing_days,
+                            )}
+                          </span>
+                        </td>
 
-                  {/* Status */}
-                  <td className="px-3 py-3">
-                    <StatusBadge status={row.status} />
-                  </td>
+                        <td
+                          className="
+                            px-3 py-3
+                            text-right text-sm
+                            text-slate-700
+                          "
+                        >
+                          {formatQuantity(
+                            row?.planned_qty,
+                          )}
+                        </td>
 
-                  {/* Alerts — single column with MI/QC badges */}
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-1.5">
-                      {row.mi_alert && <AlertBadge type="MI" />}
-                      {row.qc_alert && <AlertBadge type="QC" />}
-                      {!row.mi_alert && !row.qc_alert && (
-                        <span className="text-slate-300 text-sm">—</span>
-                      )}
-                    </div>
-                  </td>
+                        <td className="px-3 py-3">
+                          {row?.next_dept ? (
+                            <span
+                              className="
+                                rounded-md
+                                bg-slate-100
+                                px-2 py-1
+                                text-xs
+                                font-semibold
+                                uppercase
+                                tracking-wide
+                                text-slate-700
+                              "
+                            >
+                              {row.next_dept}
+                            </span>
+                          ) : (
+                            <span
+                              className="
+                                text-slate-300
+                              "
+                            >
+                              —
+                            </span>
+                          )}
+                        </td>
 
-                  {/* Flags */}
-                  <td className="px-3 py-3 text-center">
-                    {row.has_active_flag
-                      ? <Flag size={14} className="text-orange-500 inline fill-orange-200" />
-                      : <span className="text-slate-300 text-sm">—</span>
-                    }
-                  </td>
-                </tr>
+                        <td className="px-3 py-3">
+                          <PriorityBadge
+                            priority={
+                              row?.priority
+                            }
+                          />
+                        </td>
 
-                {/* Expanded row — only outside flag mode */}
-                {!flagMode && expanded === row.wo_id && (
-                  <tr key={`${row.wo_id}-exp`}>
-                    <td colSpan={12} className="p-0">
-                      <ExpandedRow row={row} />
-                    </td>
-                  </tr>
-                )}
-              </>
-            ))}
+                        <td className="px-3 py-3">
+                          <StatusBadge
+                            status={
+                              row?.status
+                            }
+                          />
+                        </td>
+
+                        <td className="px-3 py-3">
+                          <div
+                            className="
+                              flex items-center
+                              gap-1.5
+                            "
+                          >
+                            {row?.mi_alert && (
+                              <AlertBadge type="MI" />
+                            )}
+
+                            {row?.qc_alert && (
+                              <AlertBadge type="QC" />
+                            )}
+
+                            {!row?.mi_alert &&
+                              !row?.qc_alert && (
+                                <span
+                                  className="
+                                    text-sm
+                                    text-slate-300
+                                  "
+                                >
+                                  —
+                                </span>
+                              )}
+                          </div>
+                        </td>
+
+                        <td
+                          className="
+                            px-3 py-3
+                            text-center
+                          "
+                        >
+                          {rowIsFlagged ? (
+                            <span
+                              title="This work order has an active flag"
+                              aria-label="Active flag"
+                              className="
+                                inline-flex
+                                h-7 w-7
+                                items-center
+                                justify-center
+                                rounded-full
+                                bg-red-50
+                              "
+                            >
+                              <CircleAlert
+                                size={19}
+                                strokeWidth={2.5}
+                                className="
+                                  text-red-600
+                                "
+                              />
+                            </span>
+                          ) : (
+                            <span
+                              className="
+                                text-sm
+                                text-slate-300
+                              "
+                            >
+                              —
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {!flagMode &&
+                        expanded ===
+                          row.wo_id && (
+                          <tr>
+                            <td
+                              colSpan={12}
+                              className="p-0"
+                            >
+                              <ExpandedRow
+                                row={row}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                    </Fragment>
+                  )
+                },
+              )
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between pt-4 px-1">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span>Rows per page:</span>
+      <div
+        className="
+          flex flex-wrap
+          items-center
+          justify-between
+          gap-3 px-1 pt-4
+        "
+      >
+        <div
+          className="
+            flex items-center
+            gap-2 text-xs
+            text-slate-500
+          "
+        >
+          <label htmlFor="work-order-rows-per-page">
+            Rows per page:
+          </label>
+
           <select
+            id="work-order-rows-per-page"
             value={perPage}
-            onChange={e => { setPerPage(Number(e.target.value)); setPage(1) }}
-            className="border border-slate-200 rounded-lg px-2 py-1 text-xs"
+            onChange={(event) => {
+              setPerPage(
+                Number(
+                  event.target.value,
+                ),
+              )
+
+              setPage(1)
+            }}
+            className="
+              rounded-lg
+              border
+              border-slate-200
+              px-2 py-1
+              text-xs
+            "
           >
-            {ROWS_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+            {ROWS_OPTIONS.map(
+              (option) => (
+                <option
+                  key={option}
+                  value={option}
+                >
+                  {option}
+                </option>
+              ),
+            )}
           </select>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500">
-            Showing {Math.min((page - 1) * perPage + 1, sorted.length)}–{Math.min(page * perPage, sorted.length)} of {sorted.length}
+
+        <div
+          className="
+            flex flex-wrap
+            items-center
+            gap-3
+          "
+        >
+          <span
+            className="
+              text-xs
+              text-slate-500
+            "
+          >
+            Showing {showingStart}–
+            {showingEnd} of{' '}
+            {sorted.length}
           </span>
+
           <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs
-                       disabled:opacity-40 hover:bg-slate-50 transition-colors"
+            type="button"
+            onClick={() =>
+              setPage(
+                (currentPage) =>
+                  Math.max(
+                    1,
+                    currentPage - 1,
+                  ),
+              )
+            }
+            disabled={page <= 1}
+            className="
+              rounded-lg
+              border
+              border-slate-200
+              px-3 py-1.5
+              text-xs
+              transition-colors
+              hover:bg-slate-50
+              disabled:cursor-not-allowed
+              disabled:opacity-40
+            "
           >
             Previous
           </button>
+
           <button
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs
-                       disabled:opacity-40 hover:bg-slate-50 transition-colors"
+            type="button"
+            onClick={() =>
+              setPage(
+                (currentPage) =>
+                  Math.min(
+                    totalPages,
+                    currentPage + 1,
+                  ),
+              )
+            }
+            disabled={
+              page >= totalPages ||
+              sorted.length === 0
+            }
+            className="
+              rounded-lg
+              border
+              border-slate-200
+              px-3 py-1.5
+              text-xs
+              transition-colors
+              hover:bg-slate-50
+              disabled:cursor-not-allowed
+              disabled:opacity-40
+            "
           >
             Next
           </button>

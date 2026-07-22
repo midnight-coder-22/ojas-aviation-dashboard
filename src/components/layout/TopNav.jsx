@@ -43,13 +43,112 @@ export default function TopNav() {
     [db.workOrders],
   )
 
-  const invalidateCurrentDepartment = () => {
-    if (!db.currentDept) return
-
-    queryClient.invalidateQueries({ queryKey: ['dept-data', db.currentDept] })
-    queryClient.invalidateQueries({ queryKey: ['dept-summary', db.currentDept] })
-    queryClient.invalidateQueries({ queryKey: ['flags', db.currentDept] })
+  const invalidateCurrentDepartment = (
+  department = db.currentDept,
+  ) => {
+  if (!department) {
+    return Promise.resolve()
   }
+
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: ['dept-data', department],
+    }),
+
+    queryClient.invalidateQueries({
+      queryKey: ['dept-summary', department],
+    }),
+
+    queryClient.invalidateQueries({
+      queryKey: ['flags', department],
+    }),
+  ])
+  const setFlagStateInCache = (
+  woIds,
+  hasActiveFlag,
+  department = db.currentDept,
+) => {
+  if (!department || woIds.length === 0) {
+    return
+  }
+
+  const normalizedIds = new Set(
+    woIds.map((woId) => String(woId).trim()),
+  )
+
+  /*
+   * Update the department-data cache immediately.
+   */
+  queryClient.setQueryData(
+    ['dept-data', department],
+    (currentData) => {
+      if (!currentData?.data) {
+        return currentData
+      }
+
+      return {
+        ...currentData,
+
+        data: currentData.data.map((row) => {
+          const rowId = String(row.wo_id).trim()
+
+          if (!normalizedIds.has(rowId)) {
+            return row
+          }
+
+          return {
+            ...row,
+            has_active_flag: hasActiveFlag,
+          }
+        }),
+      }
+    },
+  )
+
+  /*
+   * Update the dedicated active-flags cache immediately.
+   */
+  queryClient.setQueryData(
+    ['flags', department],
+    (currentFlags) => {
+      const existingFlags = Array.isArray(currentFlags)
+        ? currentFlags
+        : []
+
+      if (!hasActiveFlag) {
+        return existingFlags.filter(
+          (flag) =>
+            !normalizedIds.has(
+              String(flag.wo_id).trim(),
+            ),
+        )
+      }
+
+      const existingIds = new Set(
+        existingFlags.map((flag) =>
+          String(flag.wo_id).trim(),
+        ),
+      )
+
+      const newFlags = [...normalizedIds]
+        .filter((woId) => !existingIds.has(woId))
+        .map((woId) => ({
+          sr_no: null,
+          wo_id: woId,
+          item_no: null,
+          department,
+          flag_status: 1,
+          raised_date: new Date().toISOString(),
+          resolved_date: null,
+          raised_by: user?.username ?? null,
+          resolved_by: null,
+        }))
+
+      return [...existingFlags, ...newFlags]
+    },
+  )
+}
+}
 
   const handleRefresh = () => {
     if (!db.currentDept || db.isRefreshing) return
@@ -60,57 +159,112 @@ export default function TopNav() {
   }
 
   const handleDone = async () => {
-    if (db.flagMode === 'add') {
-      const newIds = [...db.selectedWoIds].filter(
-        (id) => !db.preExistingIds.has(id),
-      )
+  const department = db.currentDept
 
-      if (newIds.length === 0) {
-        db.cancelFlag()
-        return
-      }
+  if (!department) {
+    showToast(
+      'No department is currently selected.',
+      'error',
+    )
 
-      try {
-        const result = await raiseFlags({
-          wo_ids: newIds,
-          department: db.currentDept,
-        })
-        showToast(result.message || `${newIds.length} flag(s) raised.`, 'success')
-        invalidateCurrentDepartment()
-      } catch (error) {
-        showToast(
-          error.response?.data?.detail || 'Failed to raise flags.',
-          'error',
-        )
-      }
+    return
+  }
 
+  if (db.flagMode === 'add') {
+    const newIds = [...db.selectedWoIds].filter(
+      (woId) => !db.preExistingIds.has(woId),
+    )
+
+    if (newIds.length === 0) {
       db.cancelFlag()
       return
     }
 
-    if (db.flagMode === 'resolve') {
-      if (db.selectedWoIds.size === 0) {
-        db.cancelFlag()
-        return
-      }
+    try {
+      const result = await raiseFlags({
+        wo_ids: newIds,
+        department,
+      })
 
-      try {
-        const result = await resolveFlags({ wo_ids: [...db.selectedWoIds] })
-        showToast(
-          result.message || `${db.selectedWoIds.size} flag(s) resolved.`,
-          'success',
-        )
-        invalidateCurrentDepartment()
-      } catch (error) {
-        showToast(
-          error.response?.data?.detail || 'Failed to resolve flags.',
-          'error',
-        )
-      }
+      /*
+       * Update the UI before performing the background refetch.
+       */
+      setFlagStateInCache(
+        newIds,
+        true,
+        department,
+      )
 
       db.cancelFlag()
+
+      showToast(
+        result.message ||
+          `${newIds.length} flag(s) raised.`,
+        'success',
+      )
+
+      /*
+       * Synchronize the optimistic cache with the server.
+       */
+      void invalidateCurrentDepartment(department)
+    } catch (error) {
+      showToast(
+        error.response?.data?.detail ||
+          'Failed to raise flags.',
+        'error',
+      )
+    }
+
+    return
+  }
+
+  if (db.flagMode === 'resolve') {
+    const selectedIds = [...db.selectedWoIds]
+
+    if (selectedIds.length === 0) {
+      db.cancelFlag()
+      return
+    }
+
+    try {
+      const result = await resolveFlags({
+        wo_ids: selectedIds,
+      })
+
+      setFlagStateInCache(
+        selectedIds,
+        false,
+        department,
+      )
+
+      db.cancelFlag()
+
+      showToast(
+        result.message ||
+          `${selectedIds.length} flag(s) resolved.`,
+        'success',
+      )
+
+      void invalidateCurrentDepartment(department)
+    } catch (error) {
+      showToast(
+        error.response?.data?.detail ||
+          'Failed to resolve flags.',
+        'error',
+      )
     }
   }
+}
+  const handleFullscreen = async () => {
+  const succeeded = await db.toggleFullscreen()
+
+  if (!succeeded) {
+    showToast(
+      'Fullscreen mode could not be started. Open the dashboard directly in a browser tab and try again.',
+      'error',
+    )
+  }
+}
 
   const neutralActionClass =
     'h-9 rounded-xl bg-slate-100 px-3.5 text-sm font-medium text-slate-700 ' +
@@ -247,7 +401,7 @@ export default function TopNav() {
           {isOnDeptDashboard && (
             <button
               type="button"
-              onClick={() => db.setIsFullscreen((value) => !value)}
+              onClick={handleFullscreen}
               title={db.isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
               aria-label={db.isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
