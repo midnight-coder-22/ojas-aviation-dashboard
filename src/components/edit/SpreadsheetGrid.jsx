@@ -1,81 +1,353 @@
-import { useMemo } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react'
+import {
+  Spreadsheet,
+  Worksheet,
+} from '@jspreadsheet-ce/react'
+
+import 'jsuites/dist/jsuites.css'
+import 'jspreadsheet-ce/dist/jspreadsheet.css'
+
+const MIN_VISIBLE_COLUMNS = 30
+const MIN_VISIBLE_ROWS = 500
+const SPARE_COLUMNS = 5
+const SPARE_ROWS = 100
+
+function isBlank(value) {
+  return (
+    value === null ||
+    value === undefined ||
+    String(value).trim() === ''
+  )
+}
+
+function normalizeCell(value) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  return value
+}
+
+function normalizeMatrix(matrix) {
+  if (!Array.isArray(matrix)) {
+    return []
+  }
+
+  return matrix.map(row =>
+    Array.isArray(row)
+      ? row.map(normalizeCell)
+      : []
+  )
+}
+
+/**
+ * Removes only unused rows and columns at the bottom and right edges.
+ * Blank cells inside the actual dataset are preserved.
+ */
+export function trimTrailingEmptyCells(matrix) {
+  const normalized = normalizeMatrix(matrix)
+
+  let lastUsedRow = normalized.length - 1
+
+  while (
+    lastUsedRow >= 0 &&
+    normalized[lastUsedRow].every(isBlank)
+  ) {
+    lastUsedRow -= 1
+  }
+
+  if (lastUsedRow < 0) {
+    return []
+  }
+
+  const usedRows = normalized.slice(0, lastUsedRow + 1)
+  let lastUsedColumn = -1
+
+  for (const row of usedRows) {
+    for (
+      let columnIndex = row.length - 1;
+      columnIndex >= 0;
+      columnIndex -= 1
+    ) {
+      if (!isBlank(row[columnIndex])) {
+        lastUsedColumn = Math.max(
+          lastUsedColumn,
+          columnIndex,
+        )
+        break
+      }
+    }
+  }
+
+  if (lastUsedColumn < 0) {
+    return []
+  }
+
+  return usedRows.map(row =>
+    Array.from(
+      { length: lastUsedColumn + 1 },
+      (_, columnIndex) =>
+        normalizeCell(row[columnIndex]),
+    )
+  )
+}
+
+function getMatrixWidth(matrix) {
+  return Math.max(
+    0,
+    ...matrix.map(row => row.length),
+  )
+}
+
+function getColumnLabel(index) {
+  let number = index + 1
+  let label = ''
+
+  while (number > 0) {
+    const remainder = (number - 1) % 26
+    label = String.fromCharCode(65 + remainder) + label
+    number = Math.floor((number - 1) / 26)
+  }
+
+  return label
+}
+
+function selectEditorContents(editor) {
+  if (!editor) {
+    return
+  }
+
+  editor.focus?.()
+
+  if (
+    editor instanceof HTMLInputElement ||
+    editor instanceof HTMLTextAreaElement
+  ) {
+    editor.select()
+    return
+  }
+
+  const selection = window.getSelection()
+
+  if (!selection) {
+    return
+  }
+
+  const range = document.createRange()
+  range.selectNodeContents(editor)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
 
 export default function SpreadsheetGrid({
-  headers     = [],
-  rows        = [],
-  editedRows  = [],
-  onCellChange,
-  searchText  = '',
+  data = [],
+  sheetKey = 'sheet',
+  onDataChange,
 }) {
-  const filtered = useMemo(() => {
-    if (!searchText) return editedRows.map((r, i) => ({ row: r, origIdx: i }))
-    const q = searchText.toLowerCase()
-    return editedRows
-      .map((r, i) => ({ row: r, origIdx: i }))
-      .filter(({ row }) => row.some(cell => String(cell ?? '').toLowerCase().includes(q)))
-  }, [editedRows, searchText])
+  const spreadsheetRef = useRef(null)
+  const editorRef = useRef(null)
+  const syncTimerRef = useRef(null)
+  const onDataChangeRef = useRef(onDataChange)
+
+  onDataChangeRef.current = onDataChange
+
+  // Jspreadsheet owns its internal state. Freeze the initial props for this
+  // mount; the parent changes the component key when a load, reset, commit,
+  // or sheet switch must recreate the grid.
+  const initialConfigRef = useRef(null)
+
+  if (initialConfigRef.current === null) {
+    const initialMatrix = trimTrailingEmptyCells(data)
+    const columnCount = Math.max(
+      MIN_VISIBLE_COLUMNS,
+      getMatrixWidth(initialMatrix) + SPARE_COLUMNS,
+    )
+    const rowCount = Math.max(
+      MIN_VISIBLE_ROWS,
+      initialMatrix.length + SPARE_ROWS,
+    )
+
+    initialConfigRef.current = {
+      initialMatrix,
+      columnCount,
+      rowCount,
+      columns: Array.from(
+        { length: columnCount },
+        (_, index) => ({
+          type: 'text',
+          title: getColumnLabel(index),
+          width: index === 0 ? 110 : 160,
+          readOnly: false,
+        }),
+      ),
+    }
+  }
+
+  const {
+    initialMatrix,
+    columnCount,
+    rowCount,
+    columns,
+  } = initialConfigRef.current
+
+  const getWorksheet = useCallback(() => {
+    const spreadsheet = spreadsheetRef.current
+
+    if (Array.isArray(spreadsheet)) {
+      return spreadsheet[0] ?? null
+    }
+
+    if (spreadsheet && Array.isArray(spreadsheet.worksheets)) {
+      return spreadsheet.worksheets[0] ?? null
+    }
+
+    if (spreadsheet?.[0]) {
+      return spreadsheet[0]
+    }
+
+    return null
+  }, [])
+
+  const syncWorksheet = useCallback(
+    candidateWorksheet => {
+      const worksheet =
+        candidateWorksheet &&
+        typeof candidateWorksheet.getData === 'function'
+          ? candidateWorksheet
+          : getWorksheet()
+
+      if (!worksheet) {
+        return
+      }
+
+      if (syncTimerRef.current) {
+        window.clearTimeout(syncTimerRef.current)
+      }
+
+      syncTimerRef.current = window.setTimeout(() => {
+        const nextMatrix = trimTrailingEmptyCells(
+          worksheet.getData(false, false),
+        )
+
+        onDataChangeRef.current?.(nextMatrix)
+      }, 0)
+    },
+    [getWorksheet],
+  )
+
+  useEffect(
+    () => () => {
+      if (syncTimerRef.current) {
+        window.clearTimeout(syncTimerRef.current)
+      }
+    },
+    [],
+  )
+
+  const handleCreateEditor = useCallback(
+    (worksheet, cell, x, y, input) => {
+      editorRef.current = input
+    },
+    [],
+  )
+
+  const handleEditionEnd = useCallback(() => {
+    editorRef.current = null
+  }, [])
+
+  const handleTripleClick = useCallback(
+    event => {
+      if (event.detail !== 3) {
+        return
+      }
+
+      const cell = event.target.closest?.(
+        'td[data-x][data-y]',
+      )
+
+      if (!cell) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      const worksheet = getWorksheet()
+
+      if (!worksheet) {
+        return
+      }
+
+      if (editorRef.current) {
+        selectEditorContents(editorRef.current)
+        return
+      }
+
+      if (typeof worksheet.openEditor !== 'function') {
+        return
+      }
+
+      worksheet.openEditor(
+        cell,
+        false,
+        event.nativeEvent,
+      )
+
+      window.requestAnimationFrame(() => {
+        const editor =
+          editorRef.current ??
+          cell.querySelector(
+            'input, textarea, [contenteditable="true"]',
+          )
+
+        selectEditorContents(editor)
+      })
+    },
+    [getWorksheet],
+  )
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-auto max-h-[calc(100vh-280px)]">
-      <table className="w-full border-collapse text-sm">
-        {/* Header */}
-        <thead className="sticky top-0 z-10 bg-slate-50">
-          <tr>
-            <th className="w-10 px-2 py-2 text-xs text-slate-400 font-normal border-b border-r border-slate-200 bg-slate-100 text-center">
-              #
-            </th>
-            {headers.map((h, i) => (
-              <th
-                key={i}
-                className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide
-                           text-slate-500 border-b border-r border-slate-200 whitespace-nowrap min-w-32"
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        {/* Body */}
-        <tbody>
-          {filtered.map(({ row, origIdx }, displayIdx) => (
-            <tr key={origIdx} className={displayIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-              {/* Row number */}
-              <td className="px-2 py-1 text-xs text-slate-400 text-center border-r border-slate-100 bg-slate-50 select-none">
-                {origIdx + 1}
-              </td>
-              {headers.map((_, colIdx) => {
-                const cellValue    = row[colIdx] ?? ''
-                const originalVal  = rows[origIdx]?.[colIdx] ?? ''
-                const isEdited     = String(cellValue) !== String(originalVal)
-                const isFirstCol   = colIdx === 0
-
-                return (
-                  <td
-                    key={colIdx}
-                    className={`border-r border-b border-slate-100 p-0
-                      ${isEdited ? 'bg-orange-50' : ''}
-                      ${isFirstCol ? 'bg-slate-50' : ''}
-                    `}
-                  >
-                    <input
-                      type="text"
-                      value={cellValue}
-                      readOnly={isFirstCol}
-                      onChange={e => onCellChange(origIdx, colIdx, e.target.value)}
-                      className={`w-full px-2.5 py-1.5 text-sm border-0 bg-transparent
-                        focus:outline-none focus:ring-1 focus:ring-orange-300 focus:bg-orange-50
-                        rounded-sm min-w-24
-                        ${isFirstCol ? 'cursor-not-allowed text-slate-400' : 'text-slate-700'}
-                      `}
-                    />
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div
+      className="excel-grid-shell"
+      onClickCapture={handleTripleClick}
+    >
+      <Spreadsheet
+        ref={spreadsheetRef}
+        onafterchanges={syncWorksheet}
+        onpaste={syncWorksheet}
+        oninsertrow={syncWorksheet}
+        ondeleterow={syncWorksheet}
+        oninsertcolumn={syncWorksheet}
+        ondeletecolumn={syncWorksheet}
+        onmoverow={syncWorksheet}
+        onmovecolumn={syncWorksheet}
+        onundo={syncWorksheet}
+        onredo={syncWorksheet}
+        oncreateeditor={handleCreateEditor}
+        oneditionend={handleEditionEnd}
+      >
+        <Worksheet
+          worksheetName={sheetKey.toUpperCase()}
+          data={initialMatrix}
+          columns={columns}
+          minDimensions={[columnCount, rowCount]}
+          tableOverflow
+          tableWidth="100%"
+          tableHeight="calc(100vh - 310px)"
+          allowInsertRow
+          allowDeleteRow
+          allowInsertColumn
+          allowDeleteColumn
+          columnDrag
+          rowDrag
+          wordWrap={false}
+          selectionCopy
+        />
+      </Spreadsheet>
     </div>
   )
 }

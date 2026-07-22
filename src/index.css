@@ -1,12 +1,120 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 * {
+  box-sizing: border-box;
   font-family: 'Inter', sans-serif;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
-  background-color: #ffffff;
+  margin: 0;
+  background: #ffffff;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Edit Data spreadsheet                                                      */
+/* -------------------------------------------------------------------------- */
+
+.excel-grid-shell {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+.excel-grid-shell .jss_container,
+.excel-grid-shell .jss_content,
+.excel-grid-shell .jexcel_container,
+.excel-grid-shell .jexcel_content {
+  width: 100% !important;
+}
+
+.excel-grid-shell .jss_content,
+.excel-grid-shell .jexcel_content {
+  max-height: calc(100vh - 310px) !important;
+  min-height: 420px;
+  overflow: auto !important;
+}
+
+.excel-grid-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: 'Inter', sans-serif;
+}
+
+.excel-grid-shell td,
+.excel-grid-shell th {
+  font-size: 12px;
+}
+
+.excel-grid-shell thead td,
+.excel-grid-shell thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  font-weight: 700 !important;
+}
+
+.excel-grid-shell tbody tr:first-child td[data-x] {
+  background: #fff7ed !important;
+  color: #7c2d12;
+  font-weight: 700;
+}
+
+.excel-grid-shell td[data-x][data-y] {
+  min-width: 90px;
+  color: #334155;
+}
+
+.excel-grid-shell td[data-x][data-y]:focus,
+.excel-grid-shell td.highlight,
+.excel-grid-shell td.jss_highlight,
+.excel-grid-shell td.jss_selected {
+  outline-color: #f97316 !important;
+}
+
+.excel-grid-shell .jss_cursor,
+.excel-grid-shell .jexcel_cursor {
+  border-color: #f97316 !important;
+}
+
+.excel-grid-shell input,
+.excel-grid-shell textarea,
+.excel-grid-shell [contenteditable='true'] {
+  font-family: 'Inter', sans-serif;
+}
+
+.jcontextmenu {
+  z-index: 10000 !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.65rem !important;
+  box-shadow: 0 18px 45px rgb(15 23 42 / 16%) !important;
+  overflow: hidden;
+}
+
+.jcontextmenu > div,
+.jcontextmenu > a {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+}
+
+@media (max-width: 1024px) {
+  .excel-grid-shell .jss_content,
+  .excel-grid-shell .jexcel_content {
+    max-height: calc(100vh - 360px) !important;
+    min-height: 360px;
+  }
 }
