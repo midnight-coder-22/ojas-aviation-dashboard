@@ -8,7 +8,7 @@ import DashboardProvider from './context/DashboardContext'
 import App           from './App'
 import './index.css'
 
-alert('main.jsx loaded')
+// alert('main.jsx loaded')
 
 const queryClient = new QueryClient({
   defaultOptions: {
