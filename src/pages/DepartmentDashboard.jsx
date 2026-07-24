@@ -177,11 +177,7 @@ export default function DepartmentDashboard() {
                   Status
                 </p>
 
-                <StatusBarChart
-                  statusBreakdown={
-                    summary?.status_breakdown ?? {}
-                  }
-                />
+                <StatusBarChart workOrders={workOrders} />
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

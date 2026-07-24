@@ -19,12 +19,18 @@ import {
 } from '../../utils/formatters'
 
 const ROWS_OPTIONS = [10, 25, 50]
+const TABLE_COLUMN_COUNT = 13
 
+/*
+ * Fields that can be sorted by clicking their table headers.
+ */
 const SORTABLE_FIELDS = new Set([
   'wo_id',
   'wo_name',
   'dept_in_date',
   'wo_ageing_days',
+  'wo_target_date',
+  'dept_target_date',
   'dept_ageing_days',
   'planned_qty',
   'next_dept',
@@ -38,6 +44,12 @@ const NUMERIC_FIELDS = new Set([
   'planned_qty',
 ])
 
+const DATE_FIELDS = new Set([
+  'dept_in_date',
+  'wo_target_date',
+  'dept_target_date',
+])
+
 function normalizeText(value) {
   return String(value ?? '').trim()
 }
@@ -46,6 +58,10 @@ function normalizeWoId(value) {
   return normalizeText(value)
 }
 
+/*
+ * The API normally returns has_active_flag as a boolean.
+ * This also safely supports older numeric and string representations.
+ */
 function isActiveFlag(value) {
   if (value === true || value === 1) {
     return true
@@ -69,11 +85,9 @@ function isActiveFlag(value) {
 }
 
 function formatQuantity(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    normalizeText(value) === ''
-  ) {
+  const normalized = normalizeText(value)
+
+  if (!normalized) {
     return '—'
   }
 
@@ -83,9 +97,70 @@ function formatQuantity(value) {
     return numericValue.toLocaleString()
   }
 
-  return String(value)
+  return normalized
 }
 
+/*
+ * Convert a value into a valid sortable number.
+ * Blank values remain null instead of accidentally becoming zero.
+ */
+function parseSortableNumber(value) {
+  if (!normalizeText(value)) {
+    return null
+  }
+
+  const numericValue = Number(value)
+
+  return Number.isFinite(numericValue)
+    ? numericValue
+    : null
+}
+
+/*
+ * Convert an API date into a timestamp used for chronological sorting.
+ */
+function parseSortableDate(value) {
+  if (!normalizeText(value)) {
+    return null
+  }
+
+  const timestamp = Date.parse(value)
+
+  return Number.isFinite(timestamp)
+    ? timestamp
+    : null
+}
+
+/*
+ * Return the text colour used for ageing values.
+ */
+function getAgeingTextClass(
+  value,
+  warningThreshold,
+  dangerThreshold,
+) {
+  const numericValue =
+    parseSortableNumber(value)
+
+  if (numericValue === null) {
+    return 'text-slate-400'
+  }
+
+  if (numericValue > dangerThreshold) {
+    return 'text-red-500'
+  }
+
+  if (numericValue > warningThreshold) {
+    return 'text-amber-500'
+  }
+
+  return 'text-slate-600'
+}
+
+/*
+ * Compare two rows while keeping blank values at the bottom for both
+ * ascending and descending sorting.
+ */
 function compareValues(
   firstRow,
   secondRow,
@@ -96,59 +171,88 @@ function compareValues(
     direction === 'asc' ? 1 : -1
 
   if (NUMERIC_FIELDS.has(field)) {
-    const firstNumber = Number(
-      firstRow?.[field],
-    )
-    const secondNumber = Number(
-      secondRow?.[field],
-    )
+    const firstNumber =
+      parseSortableNumber(
+        firstRow?.[field],
+      )
 
-    const firstIsValid =
-      Number.isFinite(firstNumber)
-    const secondIsValid =
-      Number.isFinite(secondNumber)
+    const secondNumber =
+      parseSortableNumber(
+        secondRow?.[field],
+      )
 
-    if (firstIsValid && secondIsValid) {
+    if (
+      firstNumber !== null &&
+      secondNumber !== null
+    ) {
       return (
         (firstNumber - secondNumber) *
         multiplier
       )
     }
 
-    if (firstIsValid) return -1
-    if (secondIsValid) return 1
+    if (firstNumber !== null) {
+      return -1
+    }
+
+    if (secondNumber !== null) {
+      return 1
+    }
+
+    return 0
   }
 
-  if (field === 'dept_in_date') {
-    const firstTime = Date.parse(
-      firstRow?.[field] ?? '',
-    )
-    const secondTime = Date.parse(
-      secondRow?.[field] ?? '',
-    )
+  if (DATE_FIELDS.has(field)) {
+    const firstTime =
+      parseSortableDate(
+        firstRow?.[field],
+      )
 
-    const firstIsValid =
-      Number.isFinite(firstTime)
-    const secondIsValid =
-      Number.isFinite(secondTime)
+    const secondTime =
+      parseSortableDate(
+        secondRow?.[field],
+      )
 
-    if (firstIsValid && secondIsValid) {
+    if (
+      firstTime !== null &&
+      secondTime !== null
+    ) {
       return (
         (firstTime - secondTime) *
         multiplier
       )
     }
 
-    if (firstIsValid) return -1
-    if (secondIsValid) return 1
+    if (firstTime !== null) {
+      return -1
+    }
+
+    if (secondTime !== null) {
+      return 1
+    }
+
+    return 0
   }
 
   const firstText = normalizeText(
     firstRow?.[field],
   )
+
   const secondText = normalizeText(
     secondRow?.[field],
   )
+
+  if (!firstText && !secondText) {
+    return 0
+  }
+
+  if (!firstText) {
+    return 1
+  }
+
+  if (!secondText) {
+    return -1
+  }
 
   return (
     firstText.localeCompare(
@@ -178,7 +282,9 @@ function AlertBadge({ type }) {
 
   const style = styles[type]
 
-  if (!style) return null
+  if (!style) {
+    return null
+  }
 
   return (
     <span
@@ -208,33 +314,47 @@ export default function WorkOrderTable({
     useState('desc')
 
   const [page, setPage] = useState(1)
+
   const [perPage, setPerPage] =
     useState(10)
 
-  const [expanded, setExpanded] =
+  const [expandedWoId, setExpandedWoId] =
     useState(null)
 
-  const normalizedSelectedWoIds =
-    useMemo(
-      () =>
-        new Set(
-          Array.from(
-            selectedWoIds ?? [],
-          ).map(normalizeWoId),
-        ),
-      [selectedWoIds],
-    )
+  const safeData = useMemo(
+    () =>
+      Array.isArray(data)
+        ? data
+        : [],
+    [data],
+  )
 
+  const normalizedSelectedWoIds =
+    useMemo(() => {
+      const values = Array.from(
+        selectedWoIds ?? [],
+      )
+
+      return new Set(
+        values
+          .map(normalizeWoId)
+          .filter(Boolean),
+      )
+    }, [selectedWoIds])
+
+  /*
+   * Search remains focused on work-order ID and work-order name.
+   */
   const filtered = useMemo(() => {
     const query = normalizeText(
       searchText,
     ).toLowerCase()
 
     if (!query) {
-      return data
+      return safeData
     }
 
-    return data.filter((row) => {
+    return safeData.filter((row) => {
       const woId = normalizeText(
         row?.wo_id,
       ).toLowerCase()
@@ -248,7 +368,7 @@ export default function WorkOrderTable({
         woName.includes(query)
       )
     })
-  }, [data, searchText])
+  }, [safeData, searchText])
 
   const sorted = useMemo(
     () =>
@@ -275,6 +395,10 @@ export default function WorkOrderTable({
     ),
   )
 
+  /*
+   * Keep the active page valid when filtering or data refresh changes
+   * the number of available rows.
+   */
   useEffect(() => {
     setPage((currentPage) =>
       Math.min(
@@ -288,11 +412,34 @@ export default function WorkOrderTable({
     setPage(1)
   }, [searchText])
 
+  /*
+   * Expanded-row mode and flag-selection mode are mutually exclusive.
+   */
   useEffect(() => {
     if (flagMode) {
-      setExpanded(null)
+      setExpandedWoId(null)
     }
   }, [flagMode])
+
+  /*
+   * Close the expanded row if it is no longer present after a refresh
+   * or search operation.
+   */
+  useEffect(() => {
+    if (!expandedWoId) {
+      return
+    }
+
+    const rowStillExists = filtered.some(
+      (row) =>
+        normalizeWoId(row?.wo_id) ===
+        expandedWoId,
+    )
+
+    if (!rowStillExists) {
+      setExpandedWoId(null)
+    }
+  }, [expandedWoId, filtered])
 
   const pageStart =
     (page - 1) * perPage
@@ -333,14 +480,21 @@ export default function WorkOrderTable({
   }
 
   const handleRowClick = (row) => {
-    const rowIsFlagged =
-      isActiveFlag(
-        row?.has_active_flag,
-      )
+    const woId = normalizeWoId(
+      row?.wo_id,
+    )
+
+    if (!woId) {
+      return
+    }
+
+    const rowIsFlagged = isActiveFlag(
+      row?.has_active_flag,
+    )
 
     if (flagMode === 'add') {
       if (!rowIsFlagged) {
-        onRowSelect(row.wo_id)
+        onRowSelect(woId)
       }
 
       return
@@ -348,25 +502,24 @@ export default function WorkOrderTable({
 
     if (flagMode === 'resolve') {
       if (rowIsFlagged) {
-        onRowSelect(row.wo_id)
+        onRowSelect(woId)
       }
 
       return
     }
 
-    setExpanded(
+    setExpandedWoId(
       (currentWoId) =>
-        currentWoId === row.wo_id
+        currentWoId === woId
           ? null
-          : row.wo_id,
+          : woId,
     )
   }
 
   const getRowClass = (row) => {
-    const rowIsFlagged =
-      isActiveFlag(
-        row?.has_active_flag,
-      )
+    const rowIsFlagged = isActiveFlag(
+      row?.has_active_flag,
+    )
 
     const rowIsSelected =
       normalizedSelectedWoIds.has(
@@ -437,18 +590,12 @@ export default function WorkOrderTable({
     return sortDir === 'asc' ? (
       <ChevronUp
         size={11}
-        className="
-          ml-0.5 inline
-          text-orange-500
-        "
+        className="ml-0.5 text-orange-500"
       />
     ) : (
       <ChevronDown
         size={11}
-        className="
-          ml-0.5 inline
-          text-orange-500
-        "
+        className="ml-0.5 text-orange-500"
       />
     )
   }
@@ -462,6 +609,9 @@ export default function WorkOrderTable({
     const isSortable =
       SORTABLE_FIELDS.has(field)
 
+    const isActiveSort =
+      sortField === field
+
     const alignmentClass =
       align === 'right'
         ? 'text-right'
@@ -469,11 +619,22 @@ export default function WorkOrderTable({
           ? 'text-center'
           : 'text-left'
 
+    const buttonAlignmentClass =
+      align === 'right'
+        ? 'justify-end'
+        : align === 'center'
+          ? 'justify-center'
+          : 'justify-start'
+
     return (
       <th
         scope="col"
-        onClick={() =>
-          handleSort(field)
+        aria-sort={
+          isActiveSort
+            ? sortDir === 'asc'
+              ? 'ascending'
+              : 'descending'
+            : undefined
         }
         className={`
           whitespace-nowrap
@@ -482,18 +643,30 @@ export default function WorkOrderTable({
           uppercase tracking-wide
           text-slate-500
           ${alignmentClass}
-          ${
-            isSortable
-              ? 'cursor-pointer select-none hover:text-slate-800'
-              : ''
-          }
           ${className}
         `}
       >
-        {children}
+        {isSortable ? (
+          <button
+            type="button"
+            onClick={() =>
+              handleSort(field)
+            }
+            className={`
+              inline-flex items-center
+              gap-0.5
+              uppercase tracking-wide
+              transition-colors
+              hover:text-slate-800
+              ${buttonAlignmentClass}
+            `}
+          >
+            {children}
 
-        {isSortable && (
-          <SortIcon field={field} />
+            <SortIcon field={field} />
+          </button>
+        ) : (
+          children
         )}
       </th>
     )
@@ -537,19 +710,13 @@ export default function WorkOrderTable({
                 WO Ageing
               </TableHeader>
 
-              <th
-                scope="col"
-                className="
-                  whitespace-nowrap
-                  px-3 py-3
-                  text-left text-xs
-                  font-semibold uppercase
-                  tracking-wide
-                  text-slate-500
-                "
-              >
+              <TableHeader field="wo_target_date">
                 WO Target Date
-              </th>
+              </TableHeader>
+
+              <TableHeader field="dept_target_date">
+                Dept Target Date
+              </TableHeader>
 
               <TableHeader field="dept_ageing_days">
                 Dept Ageing
@@ -574,31 +741,16 @@ export default function WorkOrderTable({
                 Status
               </TableHeader>
 
-              <th
-                scope="col"
-                className="
-                  px-3 py-3
-                  text-left text-xs
-                  font-semibold uppercase
-                  tracking-wide
-                  text-slate-500
-                "
-              >
+              <TableHeader field="">
                 Alerts
-              </th>
+              </TableHeader>
 
-              <th
-                scope="col"
-                className="
-                  px-3 py-3
-                  text-center text-xs
-                  font-semibold uppercase
-                  tracking-wide
-                  text-slate-500
-                "
+              <TableHeader
+                field=""
+                align="center"
               >
                 Flags
-              </th>
+              </TableHeader>
             </tr>
           </thead>
 
@@ -606,7 +758,9 @@ export default function WorkOrderTable({
             {pageData.length === 0 ? (
               <tr>
                 <td
-                  colSpan={12}
+                  colSpan={
+                    TABLE_COLUMN_COUNT
+                  }
                   className="
                     px-4 py-10
                     text-center text-sm
@@ -619,31 +773,30 @@ export default function WorkOrderTable({
             ) : (
               pageData.map(
                 (row, rowIndex) => {
+                  const woId =
+                    normalizeWoId(
+                      row?.wo_id,
+                    )
+
                   const rowIsFlagged =
                     isActiveFlag(
                       row?.has_active_flag,
                     )
 
-                  const rowKey =
-                    normalizeWoId(
-                      row?.wo_id,
-                    ) ||
-                    `${page}-${rowIndex}`
-
                   const rowIsSelected =
                     normalizedSelectedWoIds.has(
-                      normalizeWoId(
-                        row?.wo_id,
-                      ),
+                      woId,
                     )
+
+                  const rowKey =
+                    woId ||
+                    `${page}-${rowIndex}`
 
                   return (
                     <Fragment key={rowKey}>
                       <tr
                         onClick={() =>
-                          handleRowClick(
-                            row,
-                          )
+                          handleRowClick(row)
                         }
                         className={getRowClass(
                           row,
@@ -661,9 +814,7 @@ export default function WorkOrderTable({
                               text-slate-800
                             "
                           >
-                            {normalizeText(
-                              row?.wo_id,
-                            ) || '—'}
+                            {woId || '—'}
                           </span>
                         </td>
 
@@ -710,19 +861,12 @@ export default function WorkOrderTable({
                         >
                           <span
                             className={`
-                              text-sm
-                              font-semibold
-                              ${
-                                Number(
-                                  row?.wo_ageing_days,
-                                ) > 30
-                                  ? 'text-red-500'
-                                  : Number(
-                                        row?.wo_ageing_days,
-                                      ) > 14
-                                    ? 'text-amber-500'
-                                    : 'text-slate-600'
-                              }
+                              text-sm font-semibold
+                              ${getAgeingTextClass(
+                                row?.wo_ageing_days,
+                                14,
+                                30,
+                              )}
                             `}
                           >
                             {formatAgeingCompact(
@@ -733,12 +877,28 @@ export default function WorkOrderTable({
 
                         <td
                           className="
+                            whitespace-nowrap
                             px-3 py-3
                             text-sm
-                            text-slate-400
+                            text-slate-600
                           "
                         >
-                          —
+                          {formatDate(
+                            row?.wo_target_date,
+                          )}
+                        </td>
+
+                        <td
+                          className="
+                            whitespace-nowrap
+                            px-3 py-3
+                            text-sm
+                            text-slate-600
+                          "
+                        >
+                          {formatDate(
+                            row?.dept_target_date,
+                          )}
                         </td>
 
                         <td
@@ -749,24 +909,12 @@ export default function WorkOrderTable({
                         >
                           <span
                             className={`
-                              text-sm
-                              font-semibold
-                              ${
-                                Number(
-                                  row?.dept_ageing_days,
-                                ) > 14
-                                  ? 'text-red-500'
-                                  : Number(
-                                        row?.dept_ageing_days,
-                                      ) > 7
-                                    ? 'text-amber-500'
-                                    : row?.dept_ageing_days !==
-                                          null &&
-                                        row?.dept_ageing_days !==
-                                          undefined
-                                      ? 'text-slate-600'
-                                      : 'text-slate-400'
-                              }
+                              text-sm font-semibold
+                              ${getAgeingTextClass(
+                                row?.dept_ageing_days,
+                                7,
+                                14,
+                              )}
                             `}
                           >
                             {formatAgeingCompact(
@@ -804,11 +952,7 @@ export default function WorkOrderTable({
                               {row.next_dept}
                             </span>
                           ) : (
-                            <span
-                              className="
-                                text-slate-300
-                              "
-                            >
+                            <span className="text-slate-300">
                               —
                             </span>
                           )}
@@ -824,9 +968,7 @@ export default function WorkOrderTable({
 
                         <td className="px-3 py-3">
                           <StatusBadge
-                            status={
-                              row?.status
-                            }
+                            status={row?.status}
                           />
                         </td>
 
@@ -847,12 +989,7 @@ export default function WorkOrderTable({
 
                             {!row?.mi_alert &&
                               !row?.qc_alert && (
-                                <span
-                                  className="
-                                    text-sm
-                                    text-slate-300
-                                  "
-                                >
+                                <span className="text-sm text-slate-300">
                                   —
                                 </span>
                               )}
@@ -881,18 +1018,11 @@ export default function WorkOrderTable({
                               <CircleAlert
                                 size={19}
                                 strokeWidth={2.5}
-                                className="
-                                  text-red-600
-                                "
+                                className="text-red-600"
                               />
                             </span>
                           ) : (
-                            <span
-                              className="
-                                text-sm
-                                text-slate-300
-                              "
-                            >
+                            <span className="text-sm text-slate-300">
                               —
                             </span>
                           )}
@@ -900,11 +1030,12 @@ export default function WorkOrderTable({
                       </tr>
 
                       {!flagMode &&
-                        expanded ===
-                          row.wo_id && (
+                        expandedWoId === woId && (
                           <tr>
                             <td
-                              colSpan={12}
+                              colSpan={
+                                TABLE_COLUMN_COUNT
+                              }
                               className="p-0"
                             >
                               <ExpandedRow
@@ -955,8 +1086,7 @@ export default function WorkOrderTable({
             }}
             className="
               rounded-lg
-              border
-              border-slate-200
+              border border-slate-200
               px-2 py-1
               text-xs
             "
@@ -981,12 +1111,7 @@ export default function WorkOrderTable({
             gap-3
           "
         >
-          <span
-            className="
-              text-xs
-              text-slate-500
-            "
-          >
+          <span className="text-xs text-slate-500">
             Showing {showingStart}–
             {showingEnd} of{' '}
             {sorted.length}
@@ -1006,8 +1131,7 @@ export default function WorkOrderTable({
             disabled={page <= 1}
             className="
               rounded-lg
-              border
-              border-slate-200
+              border border-slate-200
               px-3 py-1.5
               text-xs
               transition-colors
@@ -1036,8 +1160,7 @@ export default function WorkOrderTable({
             }
             className="
               rounded-lg
-              border
-              border-slate-200
+              border border-slate-200
               px-3 py-1.5
               text-xs
               transition-colors
