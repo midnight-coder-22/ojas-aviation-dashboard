@@ -259,32 +259,6 @@ function getDeadlineState(row) {
 }
 
 /*
- * Return the text colour used for ageing values.
- */
-function getAgeingTextClass(
-  value,
-  warningThreshold,
-  dangerThreshold,
-) {
-  const numericValue =
-    parseSortableNumber(value)
-
-  if (numericValue === null) {
-    return 'text-slate-400'
-  }
-
-  if (numericValue > dangerThreshold) {
-    return 'text-red-500'
-  }
-
-  if (numericValue > warningThreshold) {
-    return 'text-amber-500'
-  }
-
-  return 'text-slate-600'
-}
-
-/*
  * Compare two rows while keeping blank values at the bottom for both
  * ascending and descending sorting.
  */
@@ -644,105 +618,102 @@ export default function WorkOrderTable({
   }
 
   const getRowClass = (row) => {
-  const rowIsFlagged = isActiveFlag(
-    row?.has_active_flag,
-  )
-
-  const rowIsSelected =
-    normalizedSelectedWoIds.has(
-      normalizeWoId(row?.wo_id),
+    const rowIsFlagged = isActiveFlag(
+      row?.has_active_flag,
     )
 
-  const deadlineState =
-    getDeadlineState(row)
+    const rowIsSelected =
+      normalizedSelectedWoIds.has(
+        normalizeWoId(row?.wo_id),
+      )
 
-  let className =
-    'border-b border-slate-100 transition-colors '
+    const deadlineState =
+      getDeadlineState(row)
 
-  /*
-   * Flag-selection mode keeps its own colors because users need
-   * to clearly see selectable, unavailable and selected rows.
-   */
-  if (flagMode === 'add') {
+    let className =
+      'border-b border-slate-100 transition-colors '
+
+    /*
+     * Flag-selection mode keeps its own colors because users need
+     * to clearly see selectable, unavailable and selected rows.
+     */
+    if (flagMode === 'add') {
+      if (rowIsFlagged) {
+        return (
+          className +
+          'cursor-not-allowed border-l-2 border-red-400 bg-red-50'
+        )
+      }
+
+      if (rowIsSelected) {
+        return (
+          className +
+          'cursor-pointer border-l-2 border-orange-400 bg-orange-50'
+        )
+      }
+
+      return (
+        className +
+        'cursor-pointer hover:bg-orange-50'
+      )
+    }
+
+    if (flagMode === 'resolve') {
+      if (!rowIsFlagged) {
+        return (
+          className +
+          'cursor-not-allowed opacity-30'
+        )
+      }
+
+      if (rowIsSelected) {
+        return (
+          className +
+          'cursor-pointer border-l-2 border-green-400 bg-green-50'
+        )
+      }
+
+      return (
+        className +
+        'cursor-pointer border-l-2 border-red-400 bg-red-50'
+      )
+    }
+
+    /*
+     * Preserve the active-flag marker without replacing the
+     * deadline background.
+     */
     if (rowIsFlagged) {
+      className +=
+        'border-l-2 border-red-400 '
+    }
+
+    /*
+     * Overall WO target-date breach takes precedence over the
+     * departmental target-date breach.
+     */
+    if (deadlineState === 'wo-overdue') {
       return (
         className +
-        'cursor-not-allowed border-l-2 border-red-400 bg-red-50'
+        'cursor-pointer bg-red-100 hover:bg-red-200'
       )
     }
 
-    if (rowIsSelected) {
+    if (
+      deadlineState ===
+      'department-overdue'
+    ) {
       return (
         className +
-        'cursor-pointer border-l-2 border-orange-400 bg-orange-50'
-      )
-    }
-
-    return (
-      className +
-      'cursor-pointer hover:bg-orange-50'
-    )
-  }
-
-  if (flagMode === 'resolve') {
-    if (!rowIsFlagged) {
-      return (
-        className +
-        'cursor-not-allowed opacity-30'
-      )
-    }
-
-    if (rowIsSelected) {
-      return (
-        className +
-        'cursor-pointer border-l-2 border-green-400 bg-green-50'
+        'cursor-pointer bg-amber-100 hover:bg-amber-200'
       )
     }
 
     return (
       className +
-      'cursor-pointer border-l-2 border-red-400 bg-red-50'
+      'cursor-pointer hover:bg-slate-50'
     )
   }
-
-  /*
-   * Preserve the active-flag marker without changing the whole
-   * row's deadline background.
-   */
-  if (rowIsFlagged) {
-    className +=
-      'border-l-2 border-red-400 '
-  }
-
-  /*
-   * WO target-date breach has the highest priority.
-   */
-  if (deadlineState === 'wo-overdue') {
-    return (
-      className +
-      'cursor-pointer bg-red-50 hover:bg-red-100'
-    )
-  }
-
-  /*
-   * Department target-date breach is shown only when the overall
-   * WO target date has not also been breached.
-   */
-  if (
-    deadlineState ===
-    'department-overdue'
-  ) {
-    return (
-      className +
-      'cursor-pointer bg-amber-50 hover:bg-amber-100'
-    )
-  }
-
-  return (
-    className +
-    'cursor-pointer hover:bg-slate-50'
-  )
-}
 
   const SortIcon = ({ field }) => {
     if (sortField !== field) {
@@ -963,6 +934,10 @@ export default function WorkOrderTable({
                         className={getRowClass(
                           row,
                         )}
+                        data-deadline-state={
+                          getDeadlineState(row) ||
+                          undefined
+                        }
                         aria-selected={
                           rowIsSelected ||
                           undefined
