@@ -132,6 +132,133 @@ function parseSortableDate(value) {
 }
 
 /*
+ * Statuses eligible for overdue highlighting.
+ *
+ * The API currently uses New and InProcess, while the UI displays
+ * them as Not Started and In Process. The normalized variants below
+ * support both API and display-style values.
+ */
+const ACTIVE_DEADLINE_STATUSES = new Set([
+  'new',
+  'notstarted',
+  'inprocess',
+])
+
+function normalizeStatusKey(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+}
+
+/*
+ * Convert an API date into a timezone-safe calendar-day value.
+ *
+ * The API normally returns YYYY-MM-DD values. Using the individual
+ * year/month/day components prevents UTC conversion from changing
+ * the date in the browser.
+ */
+function parseCalendarDay(value) {
+  const normalized = normalizeText(value)
+
+  if (!normalized) {
+    return null
+  }
+
+  const datePart = normalized.slice(0, 10)
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+    datePart,
+  )
+
+  if (!match) {
+    return null
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+
+  const dayValue = Date.UTC(
+    year,
+    month - 1,
+    day,
+  )
+
+  const parsedDate = new Date(dayValue)
+
+  /*
+   * Reject invalid dates such as 2026-02-31 instead of allowing
+   * JavaScript to silently roll them into the following month.
+   */
+  if (
+    parsedDate.getUTCFullYear() !== year ||
+    parsedDate.getUTCMonth() !== month - 1 ||
+    parsedDate.getUTCDate() !== day
+  ) {
+    return null
+  }
+
+  return dayValue
+}
+
+function getTodayCalendarDay() {
+  const today = new Date()
+
+  return Date.UTC(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  )
+}
+
+/*
+ * Return the deadline state used to highlight the complete row.
+ *
+ * Precedence:
+ * 1. WO target overdue -> red
+ * 2. Department target overdue -> amber
+ * 3. Otherwise -> no highlight
+ */
+function getDeadlineState(row) {
+  const statusKey = normalizeStatusKey(
+    row?.status,
+  )
+
+  if (
+    !ACTIVE_DEADLINE_STATUSES.has(statusKey)
+  ) {
+    return null
+  }
+
+  const today = getTodayCalendarDay()
+
+  const woTargetDay = parseCalendarDay(
+    row?.wo_target_date,
+  )
+
+  if (
+    woTargetDay !== null &&
+    today > woTargetDay
+  ) {
+    return 'wo-overdue'
+  }
+
+  const departmentTargetDay =
+    parseCalendarDay(
+      row?.dept_target_date,
+    )
+
+  if (
+    departmentTargetDay !== null &&
+    today > departmentTargetDay
+  ) {
+    return 'department-overdue'
+  }
+
+  return null
+}
+
+/*
  * Return the text colour used for ageing values.
  */
 function getAgeingTextClass(
@@ -517,70 +644,105 @@ export default function WorkOrderTable({
   }
 
   const getRowClass = (row) => {
-    const rowIsFlagged = isActiveFlag(
-      row?.has_active_flag,
+  const rowIsFlagged = isActiveFlag(
+    row?.has_active_flag,
+  )
+
+  const rowIsSelected =
+    normalizedSelectedWoIds.has(
+      normalizeWoId(row?.wo_id),
     )
 
-    const rowIsSelected =
-      normalizedSelectedWoIds.has(
-        normalizeWoId(row?.wo_id),
-      )
+  const deadlineState =
+    getDeadlineState(row)
 
-    let className =
-      'border-b border-slate-100 transition-colors '
+  let className =
+    'border-b border-slate-100 transition-colors '
 
-    if (flagMode === 'add') {
-      if (rowIsFlagged) {
-        return (
-          className +
-          'cursor-not-allowed border-l-2 border-red-400 bg-red-50'
-        )
-      }
-
-      if (rowIsSelected) {
-        return (
-          className +
-          'cursor-pointer border-l-2 border-orange-400 bg-orange-50'
-        )
-      }
-
-      return (
-        className +
-        'cursor-pointer hover:bg-orange-50'
-      )
-    }
-
-    if (flagMode === 'resolve') {
-      if (!rowIsFlagged) {
-        return (
-          className +
-          'cursor-not-allowed opacity-30'
-        )
-      }
-
-      if (rowIsSelected) {
-        return (
-          className +
-          'cursor-pointer border-l-2 border-green-400 bg-green-50'
-        )
-      }
-
-      return (
-        className +
-        'cursor-pointer border-l-2 border-red-400 bg-red-50'
-      )
-    }
-
+  /*
+   * Flag-selection mode keeps its own colors because users need
+   * to clearly see selectable, unavailable and selected rows.
+   */
+  if (flagMode === 'add') {
     if (rowIsFlagged) {
-      className +=
-        'border-l-2 border-red-400 '
+      return (
+        className +
+        'cursor-not-allowed border-l-2 border-red-400 bg-red-50'
+      )
+    }
+
+    if (rowIsSelected) {
+      return (
+        className +
+        'cursor-pointer border-l-2 border-orange-400 bg-orange-50'
+      )
     }
 
     return (
       className +
-      'cursor-pointer hover:bg-slate-50'
+      'cursor-pointer hover:bg-orange-50'
     )
   }
+
+  if (flagMode === 'resolve') {
+    if (!rowIsFlagged) {
+      return (
+        className +
+        'cursor-not-allowed opacity-30'
+      )
+    }
+
+    if (rowIsSelected) {
+      return (
+        className +
+        'cursor-pointer border-l-2 border-green-400 bg-green-50'
+      )
+    }
+
+    return (
+      className +
+      'cursor-pointer border-l-2 border-red-400 bg-red-50'
+    )
+  }
+
+  /*
+   * Preserve the active-flag marker without changing the whole
+   * row's deadline background.
+   */
+  if (rowIsFlagged) {
+    className +=
+      'border-l-2 border-red-400 '
+  }
+
+  /*
+   * WO target-date breach has the highest priority.
+   */
+  if (deadlineState === 'wo-overdue') {
+    return (
+      className +
+      'cursor-pointer bg-red-50 hover:bg-red-100'
+    )
+  }
+
+  /*
+   * Department target-date breach is shown only when the overall
+   * WO target date has not also been breached.
+   */
+  if (
+    deadlineState ===
+    'department-overdue'
+  ) {
+    return (
+      className +
+      'cursor-pointer bg-amber-50 hover:bg-amber-100'
+    )
+  }
+
+  return (
+    className +
+    'cursor-pointer hover:bg-slate-50'
+  )
+}
 
   const SortIcon = ({ field }) => {
     if (sortField !== field) {
@@ -860,14 +1022,10 @@ export default function WorkOrderTable({
                           "
                         >
                           <span
-                            className={`
+                            className="
                               text-sm font-semibold
-                              ${getAgeingTextClass(
-                                row?.wo_ageing_days,
-                                14,
-                                30,
-                              )}
-                            `}
+                              text-slate-700
+                            "
                           >
                             {formatAgeingCompact(
                               row?.wo_ageing_days,
@@ -908,14 +1066,10 @@ export default function WorkOrderTable({
                           "
                         >
                           <span
-                            className={`
+                            className="
                               text-sm font-semibold
-                              ${getAgeingTextClass(
-                                row?.dept_ageing_days,
-                                7,
-                                14,
-                              )}
-                            `}
+                              text-slate-700
+                            "
                           >
                             {formatAgeingCompact(
                               row?.dept_ageing_days,
