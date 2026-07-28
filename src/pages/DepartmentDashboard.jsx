@@ -22,6 +22,9 @@ import { useDashboard } from '../context/DashboardContext'
 import { slugToDept } from '../utils/constants'
 import { formatDeptHeading } from '../utils/formatters'
 
+import IncomingFlowChart from '../components/charts/IncomingFlowChart'
+import { useIncomingFlow } from '../hooks/useIncomingFlow'
+
 export default function DepartmentDashboard() {
   const { dept } = useParams()
   const deptName = slugToDept(dept)
@@ -31,6 +34,9 @@ export default function DepartmentDashboard() {
   const deptQuery = useDeptData(deptName)
   const summaryQuery = useSummary(deptName)
   const flagsQuery = useDeptFlags(deptName)
+
+  const incomingFlowQuery = useIncomingFlow(deptName)
+  const incomingFlow = incomingFlowQuery.data
 
   const rawWorkOrders = deptQuery.data?.data ?? []
   const summary = summaryQuery.data
@@ -132,6 +138,9 @@ export default function DepartmentDashboard() {
 
       db.toggleWoId(woId)
     }
+  
+    
+  
   }
 
   return (
@@ -210,6 +219,60 @@ export default function DepartmentDashboard() {
             </>
           )}
         </div>
+        
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                Incoming flow KPI
+              </p>
+
+              <h2 className="mt-1 text-sm font-semibold text-slate-800">
+                Incoming WOs by Source Department
+              </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                 Work orders whose next distinct department is{' '}
+                <span className="font-semibold text-slate-700">
+                {deptName}
+                </span>
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-right">
+              <p className="text-2xl font-bold leading-none text-slate-900">
+                {incomingFlow?.total_wos ?? 0}
+              </p>
+
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Incoming WOs
+              </p>
+            </div>
+          </div>
+
+          {incomingFlowQuery.isLoading ? (
+            <div className="h-[300px] animate-pulse rounded-lg bg-slate-100" />
+          ) : incomingFlowQuery.isError ? (
+            <div className="flex h-[300px] flex-col items-center justify-center gap-3">
+              <p className="text-sm text-slate-500">
+                Incoming-flow data could not be loaded.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => incomingFlowQuery.refetch()}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <IncomingFlowChart
+              rows={incomingFlow?.data ?? []}
+            />
+          )}
+        </section>
+
 
         {/* Work-order table */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

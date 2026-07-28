@@ -28,3 +28,13 @@ export const fetchAllSummary = async () => {
   const res = await apiClient.get('/api/dashboard/all/summary')
   return res.data
 }
+
+// GET /api/dashboard/vmc/incoming-flow
+// Returns incoming WO counts grouped by source department and priority.
+export const fetchIncomingFlow = async (dept) => {
+  const res = await apiClient.get(
+    `/api/dashboard/${deptToSlug(dept)}/incoming-flow`,
+  )
+
+  return res.data
+}

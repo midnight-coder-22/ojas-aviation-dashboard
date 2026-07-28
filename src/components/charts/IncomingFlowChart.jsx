@@ -1,0 +1,200 @@
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+
+import { CHART_COLORS } from '../../utils/constants'
+
+const PRIORITY_SERIES = [
+  {
+    key: 'low',
+    label: 'Low',
+    color: CHART_COLORS.priority.Low,
+  },
+  {
+    key: 'medium',
+    label: 'Medium',
+    color: CHART_COLORS.priority.Medium,
+  },
+  {
+    key: 'high',
+    label: 'High',
+    color: CHART_COLORS.priority.High,
+  },
+]
+
+function IncomingFlowTooltip({
+  active,
+  payload,
+  label,
+}) {
+  if (!active || !payload?.length) {
+    return null
+  }
+
+  const total = Number(
+    payload[0]?.payload?.total,
+  ) || 0
+
+  return (
+    <div className="min-w-44 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
+      <p className="mb-2 font-semibold text-slate-800">
+        {label}
+      </p>
+
+      <div className="space-y-1.5">
+        {payload.map((entry) => (
+          <div
+            key={entry.dataKey}
+            className="flex items-center justify-between gap-6"
+          >
+            <span className="flex items-center gap-2 text-slate-600">
+              <span
+                className="h-2.5 w-2.5 rounded-sm"
+                style={{
+                  backgroundColor: entry.color,
+                }}
+              />
+
+              {entry.name}
+            </span>
+
+            <span className="font-semibold text-slate-800">
+              {entry.value}
+            </span>
+          </div>
+        ))}
+
+        <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
+          <span className="font-medium text-slate-500">
+            Total
+          </span>
+
+          <span className="font-bold text-slate-900">
+            {total}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function IncomingFlowChart({
+  rows = [],
+}) {
+  const chartData = rows.map((row) => ({
+    source_department: row.source_department,
+    low: Number(row.low) || 0,
+    medium: Number(row.medium) || 0,
+    high: Number(row.high) || 0,
+    total: Number(row.total) || 0,
+  }))
+
+  const hasIncomingWorkOrders = chartData.some(
+    (row) => row.total > 0,
+  )
+
+  if (!hasIncomingWorkOrders) {
+    return (
+      <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">
+        No work orders are currently incoming to this department.
+      </div>
+    )
+  }
+
+  return (
+    <ResponsiveContainer
+      width="100%"
+      height={300}
+    >
+      <BarChart
+        data={chartData}
+        margin={{
+          top: 12,
+          right: 16,
+          bottom: 22,
+          left: 12,
+        }}
+      >
+        <CartesianGrid
+          vertical={false}
+          stroke="#E2E8F0"
+          strokeDasharray="3 3"
+        />
+
+        <XAxis
+          dataKey="source_department"
+          axisLine={false}
+          tickLine={false}
+          interval={0}
+          height={52}
+          tick={{
+            fontSize: 11,
+            fill: '#64748B',
+          }}
+          label={{
+            value: 'Source department',
+            position: 'insideBottom',
+            offset: -8,
+            fill: '#64748B',
+            fontSize: 11,
+          }}
+        />
+
+        <YAxis
+          allowDecimals={false}
+          axisLine={false}
+          tickLine={false}
+          width={52}
+          tick={{
+            fontSize: 11,
+            fill: '#94A3B8',
+          }}
+          label={{
+            value: 'WO count',
+            angle: -90,
+            position: 'insideLeft',
+            fill: '#64748B',
+            fontSize: 11,
+          }}
+        />
+
+        <Tooltip
+          content={<IncomingFlowTooltip />}
+          cursor={{
+            fill: '#F8FAFC',
+          }}
+        />
+
+        <Legend
+          verticalAlign="top"
+          align="right"
+          iconType="square"
+          iconSize={9}
+          wrapperStyle={{
+            paddingBottom: 12,
+            fontSize: 11,
+            color: '#64748B',
+          }}
+        />
+
+        {PRIORITY_SERIES.map((series) => (
+          <Bar
+            key={series.key}
+            dataKey={series.key}
+            name={series.label}
+            stackId="priority"
+            fill={series.color}
+            maxBarSize={58}
+          />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
