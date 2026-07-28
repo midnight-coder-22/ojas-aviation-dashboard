@@ -29,6 +29,34 @@ const PRIORITY_SERIES = [
   },
 ]
 
+function DepartmentTick({
+  x,
+  y,
+  payload,
+}) {
+  const words = String(payload?.value ?? '').split(' ')
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        textAnchor="middle"
+        fill="#64748B"
+        fontSize={9}
+      >
+        {words.map((word, index) => (
+          <tspan
+            key={`${word}-${index}`}
+            x={0}
+            dy={index === 0 ? 12 : 11}
+          >
+            {word}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  )
+}
+
 function IncomingFlowTooltip({
   active,
   payload,
@@ -43,7 +71,7 @@ function IncomingFlowTooltip({
   ) || 0
 
   return (
-    <div className="min-w-44 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
+    <div className="min-w-40 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
       <p className="mb-2 font-semibold text-slate-800">
         {label}
       </p>
@@ -88,21 +116,19 @@ function IncomingFlowTooltip({
 export default function IncomingFlowChart({
   rows = [],
 }) {
-  const chartData = rows.map((row) => ({
-    source_department: row.source_department,
-    low: Number(row.low) || 0,
-    medium: Number(row.medium) || 0,
-    high: Number(row.high) || 0,
-    total: Number(row.total) || 0,
-  }))
+  const chartData = rows
+    .map((row) => ({
+      source_department: row.source_department,
+      low: Number(row.low) || 0,
+      medium: Number(row.medium) || 0,
+      high: Number(row.high) || 0,
+      total: Number(row.total) || 0,
+    }))
+    .filter((row) => row.total > 0)
 
-  const hasIncomingWorkOrders = chartData.some(
-    (row) => row.total > 0,
-  )
-
-  if (!hasIncomingWorkOrders) {
+  if (chartData.length === 0) {
     return (
-      <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">
+      <div className="flex h-[220px] items-center justify-center px-4 text-center text-sm text-slate-400">
         No work orders are currently incoming to this department.
       </div>
     )
@@ -111,15 +137,15 @@ export default function IncomingFlowChart({
   return (
     <ResponsiveContainer
       width="100%"
-      height={300}
+      height={220}
     >
       <BarChart
         data={chartData}
         margin={{
-          top: 12,
-          right: 16,
-          bottom: 22,
-          left: 12,
+          top: 8,
+          right: 4,
+          bottom: 18,
+          left: 0,
         }}
       >
         <CartesianGrid
@@ -133,27 +159,17 @@ export default function IncomingFlowChart({
           axisLine={false}
           tickLine={false}
           interval={0}
-          height={52}
-          tick={{
-            fontSize: 11,
-            fill: '#64748B',
-          }}
-          label={{
-            value: 'Source department',
-            position: 'insideBottom',
-            offset: -8,
-            fill: '#64748B',
-            fontSize: 11,
-          }}
+          height={44}
+          tick={<DepartmentTick />}
         />
 
         <YAxis
           allowDecimals={false}
           axisLine={false}
           tickLine={false}
-          width={52}
+          width={36}
           tick={{
-            fontSize: 11,
+            fontSize: 9,
             fill: '#94A3B8',
           }}
           label={{
@@ -161,7 +177,7 @@ export default function IncomingFlowChart({
             angle: -90,
             position: 'insideLeft',
             fill: '#64748B',
-            fontSize: 11,
+            fontSize: 9,
           }}
         />
 
@@ -176,10 +192,10 @@ export default function IncomingFlowChart({
           verticalAlign="top"
           align="right"
           iconType="square"
-          iconSize={9}
+          iconSize={8}
           wrapperStyle={{
-            paddingBottom: 12,
-            fontSize: 11,
+            paddingBottom: 6,
+            fontSize: 10,
             color: '#64748B',
           }}
         />
@@ -191,7 +207,7 @@ export default function IncomingFlowChart({
             name={series.label}
             stackId="priority"
             fill={series.color}
-            maxBarSize={58}
+            maxBarSize={40}
           />
         ))}
       </BarChart>
