@@ -39,6 +39,46 @@ export default function ExecutiveDashboard() {
 
   const handleRefresh = () => queryClient.invalidateQueries(['all-summary'])
 
+  const EXECUTIVE_STATUS_SEGMENTS = [
+    {
+      key: 'New',
+      label: 'New',
+      barClass: 'bg-blue-400',
+    },
+    {
+      key: 'Ongoing',
+      label: 'Ongoing',
+      barClass: 'bg-amber-400',
+    },
+    {
+      key: 'Overdue',
+      label: 'Overdue',
+      barClass: 'bg-red-500',
+    },
+    {
+      key: 'Completed',
+      label: 'Completed',
+      barClass: 'bg-green-400',
+    },
+  ]
+
+  function getExecutiveStatusCount(
+    breakdown,
+    status,
+  ) {
+    if (status === 'Ongoing') {
+      return Number(
+        breakdown?.Ongoing ??
+        breakdown?.InProcess ??
+        0,
+      )
+    }
+
+    return Number(
+      breakdown?.[status] ?? 0,
+    )
+  }
+
   return (
     <AppLayout>
 
@@ -132,17 +172,45 @@ export default function ExecutiveDashboard() {
                     </div>
 
                     {/* Status mini bar */}
+                    {/* Status mini bar */}
                     {total > 0 && (
                       <div className="mt-4">
-                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden flex">
-                          <div className="bg-blue-400 h-full" style={{ width: `${((s.status_breakdown?.New ?? 0) / total) * 100}%` }} />
-                          <div className="bg-orange-400 h-full" style={{ width: `${((s.status_breakdown?.InProcess ?? 0) / total) * 100}%` }} />
-                          <div className="bg-green-400 h-full" style={{ width: `${((s.status_breakdown?.Completed ?? 0) / total) * 100}%` }} />
+                        <div className="flex h-2 overflow-hidden rounded-full bg-slate-100">
+                          {EXECUTIVE_STATUS_SEGMENTS.map(
+                            (segment) => {
+                              const count =
+                                getExecutiveStatusCount(
+                                  s.status_breakdown,
+                                  segment.key,
+                                )
+
+                              return (
+                                <div
+                                  key={segment.key}
+                                  className={`h-full ${segment.barClass}`}
+                                  style={{
+                                    width: `${
+                                      (count / total) * 100
+                                    }%`,
+                                  }}
+                                />
+                              )
+                            },
+                          )}
                         </div>
-                        <div className="flex gap-3 mt-1.5 text-xs text-slate-400">
-                          <span>New: {s.status_breakdown?.New ?? 0}</span>
-                          <span>In Process: {s.status_breakdown?.InProcess ?? 0}</span>
-                          <span>Completed: {s.status_breakdown?.Completed ?? 0}</span>
+
+                        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-400">
+                          {EXECUTIVE_STATUS_SEGMENTS.map(
+                            (segment) => (
+                              <span key={segment.key}>
+                                {segment.label}:{' '}
+                                {getExecutiveStatusCount(
+                                  s.status_breakdown,
+                                  segment.key,
+                                )}
+                              </span>
+                            ),
+                          )}
                         </div>
                       </div>
                     )}

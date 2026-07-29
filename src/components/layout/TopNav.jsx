@@ -71,7 +71,7 @@ export default function TopNav() {
   if (!department || woIds.length === 0) {
     return
   }
-
+  }
   const normalizedIds = new Set(
     woIds.map((woId) => String(woId).trim()),
   )
@@ -148,7 +148,7 @@ export default function TopNav() {
     },
   )
 }
-}
+
 
   const handleRefresh = () => {
     if (!db.currentDept || db.isRefreshing) return

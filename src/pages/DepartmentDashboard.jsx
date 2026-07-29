@@ -21,8 +21,35 @@ import { useIncomingFlow } from '../hooks/useIncomingFlow'
 
 import { useDashboard } from '../context/DashboardContext'
 
-import { slugToDept } from '../utils/constants'
+import { slugToDept, CHART_COLORS, } from '../utils/constants'
 import { formatDeptHeading } from '../utils/formatters'
+
+const EMPTY_WORK_ORDERS = []
+
+const CHART_CARD_CLASS = `
+  flex h-[290px] min-w-0 flex-col overflow-hidden
+  rounded-xl border border-slate-200 bg-white
+  p-3 shadow-sm
+`
+
+const PRIORITY_LEGEND = [
+  {
+    label: 'Low',
+    color:
+      CHART_COLORS.priority.Low,
+  },
+  {
+    label: 'Medium',
+    color:
+      CHART_COLORS.priority.Medium,
+  },
+  {
+    label: 'High',
+    color:
+      CHART_COLORS.priority.High,
+  },
+] 
+
 
 export default function DepartmentDashboard() {
   const { dept } = useParams()
@@ -35,10 +62,11 @@ export default function DepartmentDashboard() {
   const flagsQuery = useDeptFlags(deptName)
   const incomingFlowQuery = useIncomingFlow(deptName)
 
-  const rawWorkOrders = deptQuery.data?.data ?? []
+  const rawWorkOrders = deptQuery.data?.data ?? EMPTY_WORK_ORDERS
   const summary = summaryQuery.data
   const incomingFlow = incomingFlowQuery.data
   const recordCount = deptQuery.data?.record_count ?? 0
+  const totalWorkOrders = summary?.total_wos ?? recordCount
 
   /*
    * Build a lookup containing every WO that currently has an active flag.
@@ -138,19 +166,17 @@ export default function DepartmentDashboard() {
       <div
         id="department-dashboard-fullscreen"
         className={`
-          relative flex h-full min-h-0 w-full flex-col gap-3
+          relative flex h-full min-h-0 w-full flex-col gap-2
           bg-[#f7f8fa] px-5
-          ${db.isFullscreen ? 'py-4' : 'pb-3 pt-3'}
+          ${db.isFullscreen ? 'py-3' : 'pb-2 pt-2'}
         `}
       >
         {/* Department heading */}
-        {!db.isFullscreen && (
-          <div className="shrink-0">
-            <h1 className="text-xl font-bold leading-tight text-slate-900">
-              {formatDeptHeading(deptName)}
-            </h1>
-          </div>
-        )}
+        <div className="shrink-0">
+          <h1 className="text-xl font-bold leading-tight text-slate-900">
+            {formatDeptHeading(deptName)}
+          </h1>
+        </div>
 
         {/*
          * All four visuals live in this single grid.
@@ -158,41 +184,81 @@ export default function DepartmentDashboard() {
          * At desktop width they render in one row:
          * Status | Priority | Flow to Next Dept | Incoming WOs
          */}
-        <div className="grid shrink-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {isLoading ? (
             [...Array(3)].map((_, index) => (
               <div
                 key={`chart-loading-${index}`}
-                className="h-[330px] animate-pulse rounded-xl bg-slate-200"
+                className="h-[290px] animate-pulse rounded-xl bg-slate-200"
               />
             ))
           ) : (
             <>
               {/* Status */}
-              <div className="flex h-[330px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="shrink-0">
-                  <p className="text-xs uppercase leading-none tracking-wider text-slate-400">
-                    Chart
-                  </p>
+              {/* Status */}
+<div className={CHART_CARD_CLASS}>
+  <div className="mb-1.5 flex shrink-0 items-start justify-between gap-2">
+    <div className="min-w-0">
+      <p className="text-xs uppercase leading-none tracking-wider text-slate-400">
+        Chart
+      </p>
 
-                  <p className="mb-3 mt-0.5 text-sm font-semibold text-slate-800">
-                    Status
-                  </p>
-                </div>
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <p className="text-sm font-semibold text-slate-800">
+          Status
+        </p>
 
-                <div className="min-h-0 flex-1">
-                  <StatusBarChart workOrders={workOrders} />
-                </div>
-              </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {PRIORITY_LEGEND.map(
+            (item) => (
+              <span
+                key={item.label}
+                className="inline-flex items-center gap-1 text-[9px] font-medium text-slate-500"
+              >
+                <span
+                  className="h-2 w-2 rounded-sm"
+                  style={{
+                    backgroundColor:
+                      item.color,
+                  }}
+                />
+
+                {item.label}
+              </span>
+            ),
+          )}
+        </div>
+      </div>
+    </div>
+
+    <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-center">
+      <p className="text-lg font-bold leading-none text-slate-900">
+        {totalWorkOrders}
+      </p>
+
+      <p className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-slate-500">
+        Total WOs
+      </p>
+    </div>
+  </div>
+
+  <div className="min-h-0 flex-1">
+    <StatusBarChart
+      workOrders={workOrders}
+    />
+  </div>
+</div>
+
+
 
               {/* Priority */}
-              <div className="flex h-[330px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className={CHART_CARD_CLASS}>                
                 <div className="shrink-0">
                   <p className="text-xs uppercase leading-none tracking-wider text-slate-400">
                     Chart
                   </p>
 
-                  <p className="mb-3 mt-0.5 text-sm font-semibold text-slate-800">
+                  <p className="mb-1.5 mt-0.5 text-sm font-semibold text-slate-800">
                     Priority
                   </p>
                 </div>
@@ -207,7 +273,7 @@ export default function DepartmentDashboard() {
               </div>
 
               {/* Flow to next department */}
-              <div className="flex h-[330px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className={CHART_CARD_CLASS}>
                 <div className="shrink-0">
                   <p className="text-xs uppercase leading-none tracking-wider text-slate-400">
                     Chart
@@ -281,8 +347,8 @@ export default function DepartmentDashboard() {
 
         {/* Work-order table */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 pb-2 pt-3">
-            <span className="text-sm font-bold text-slate-800">
+          <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 py-2">
+              <span className="text-sm font-bold text-slate-800">
               Work Orders
             </span>
 
@@ -291,7 +357,7 @@ export default function DepartmentDashboard() {
             </span>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto px-4 pb-2">
+          <div className="min-h-0 flex-1 overflow-auto px-3 pb-1">
             {isLoading && (
               <div className="pt-4">
                 <LoadingSkeleton type="table" />

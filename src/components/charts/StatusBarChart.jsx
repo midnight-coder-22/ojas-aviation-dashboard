@@ -3,8 +3,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
-  Rectangle,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -16,11 +14,19 @@ import {
   STATUS_DISPLAY,
 } from '../../utils/constants'
 
+import LabeledRoundedStackSegment
+  from './LabeledRoundedStackSegment'
+
+import {
+  getIntegerAxisScale,
+} from '../../utils/chartScale'
+
+
 const STATUS_ORDER = [
   'New',
-  'InProcess',
+  'Ongoing',
+  'Overdue',
   'Completed',
-  'Unknown',
 ]
 
 const PRIORITY_ORDER = [
@@ -29,22 +35,44 @@ const PRIORITY_ORDER = [
   'High',
 ]
 
-// Match the width and corner rounding used by Flow to Next Dept.
-const BAR_WIDTH = 36
-const BAR_RADIUS = 5
 
 /**
  * Converts null, undefined, and empty values into a fallback value.
  */
-function cleanValue(value, fallback) {
-  if (value === null || value === undefined) {
-    return fallback
+// function cleanValue(value, fallback) {
+//   if (value === null || value === undefined) {
+//     return fallback
+//   }
+
+//   const cleaned = String(value).trim()
+
+//   return cleaned || fallback
+// }
+
+function normalizeStatus(value) {
+  const statusKey = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+
+  const statusMap = {
+    new: 'New',
+    notstarted: 'New',
+
+    inprocess: 'Ongoing',
+    inprogress: 'Ongoing',
+    ongoing: 'Ongoing',
+
+    overdue: 'Overdue',
+
+    completed: 'Completed',
+    complete: 'Completed',
+    done: 'Completed',
   }
 
-  const cleaned = String(value).trim()
-
-  return cleaned || fallback
+  return statusMap[statusKey] || 'New'
 }
+
 
 /**
  * Ensures the dashboard receives only the three supported priority values.
@@ -72,15 +100,15 @@ function normalizePriority(value) {
  *
  * Status -> Priority -> Count
  */
-function buildStatusPriorityData(workOrders) {
+
+function buildStatusPriorityData(
+  workOrders,
+) {
   const statusPriorityCounts = {}
-  const discoveredStatuses = []
-  const discoveredPriorities = []
 
   for (const workOrder of workOrders) {
-    const status = cleanValue(
+    const status = normalizeStatus(
       workOrder.status,
-      'Unknown',
     )
 
     const priority = normalizePriority(
@@ -92,64 +120,57 @@ function buildStatusPriorityData(workOrders) {
     }
 
     statusPriorityCounts[status][priority] =
-      (statusPriorityCounts[status][priority] || 0) + 1
-
-    if (!discoveredStatuses.includes(status)) {
-      discoveredStatuses.push(status)
-    }
-
-    if (!discoveredPriorities.includes(priority)) {
-      discoveredPriorities.push(priority)
-    }
+      (
+        statusPriorityCounts[status][priority] ||
+        0
+      ) + 1
   }
 
-  // Keep known statuses in a consistent order while still supporting
-  // any unexpected status returned by the source data.
-  const orderedStatuses = [
-    ...STATUS_ORDER.filter((status) =>
-      discoveredStatuses.includes(status),
-    ),
-    ...discoveredStatuses.filter(
-      (status) => !STATUS_ORDER.includes(status),
-    ),
-  ]
+  /*
+   * Always include all four status categories, even when one currently
+   * has a count of zero.
+   */
+  const data = STATUS_ORDER.map(
+    (status) => {
+      const row = {
+        status,
+        name:
+          STATUS_DISPLAY[status] ||
+          status,
+        total: 0,
+      }
 
-  const orderedPriorities = PRIORITY_ORDER.filter(
-    (priority) =>
-      discoveredPriorities.includes(priority),
+      for (
+        const priority of PRIORITY_ORDER
+      ) {
+        const count =
+          statusPriorityCounts[status]?.[
+            priority
+          ] || 0
+
+        row[priority] = count
+        row.total += count
+      }
+
+      /*
+       * The highest non-zero segment gets the rounded top corners
+       * and the stack-total label.
+       */
+      row.topKey =
+        [...PRIORITY_ORDER]
+          .reverse()
+          .find(
+            (priority) =>
+              row[priority] > 0,
+          ) ?? null
+
+      return row
+    },
   )
-
-  const data = orderedStatuses.map((status) => {
-    const row = {
-      status,
-      name: STATUS_DISPLAY[status] || status,
-      total: 0,
-    }
-
-    for (const priority of orderedPriorities) {
-      const count =
-        statusPriorityCounts[status]?.[priority] || 0
-
-      row[priority] = count
-      row.total += count
-    }
-
-    /*
-     * Only the highest visible segment of a stacked bar should have
-     * rounded upper corners. Internal stack boundaries remain flat.
-     */
-    row.topPriority =
-      [...PRIORITY_ORDER]
-        .reverse()
-        .find((priority) => row[priority] > 0) ??
-      null
-
-    return row
-  })
 
   return {
     data,
-    priorities: orderedPriorities,
+    priorities: PRIORITY_ORDER,
   }
 }
 
@@ -170,42 +191,6 @@ function getPriorityColor(priority) {
  * The top visible priority segment receives rounded upper corners,
  * matching the visual style of the Flow to Next Dept chart.
  */
-function RoundedStackSegment({
-  x,
-  y,
-  width,
-  height,
-  fill,
-  payload,
-  priority,
-}) {
-  const numericHeight = Number(height)
-
-  if (
-    !Number.isFinite(numericHeight) ||
-    numericHeight <= 0
-  ) {
-    return null
-  }
-
-  const isTopSegment =
-    payload?.topPriority === priority
-
-  return (
-    <Rectangle
-      x={x}
-      y={y}
-      width={width}
-      height={height}
-      fill={fill}
-      radius={
-        isTopSegment
-          ? [BAR_RADIUS, BAR_RADIUS, 0, 0]
-          : [0, 0, 0, 0]
-      }
-    />
-  )
-}
 
 /**
  * Tooltip displaying the priority breakdown and total for one status.
@@ -279,7 +264,20 @@ export default function StatusBarChart({
     [workOrders],
   )
 
-  if (data.length === 0) {
+  const axisScale = useMemo(
+  () =>
+    getIntegerAxisScale(
+      Math.max(
+        0,
+        ...data.map(
+          (row) => row.total,
+        ),
+      ),
+    ),
+  [data],
+)
+  
+  if (workOrders.length === 0) {
     return (
       <div className="flex h-[220px] items-center justify-center text-sm text-slate-400">
         No status data available
@@ -288,12 +286,12 @@ export default function StatusBarChart({
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={195}>
       <BarChart
         data={data}
         margin={{
-          top: 8,
-          right: 8,
+          top: 26,
+          right: 30,
           bottom: 0,
           left: 0,
         }}
@@ -307,8 +305,9 @@ export default function StatusBarChart({
           dataKey="name"
           axisLine={false}
           tickLine={false}
+          interval={0}
           tick={{
-            fontSize: 11,
+            fontSize: 10,
             fill: '#64748B',
           }}
         />
@@ -317,12 +316,15 @@ export default function StatusBarChart({
           allowDecimals={false}
           axisLine={false}
           tickLine={false}
+          interval={0}
           width={28}
+          domain={axisScale.domain}
+          ticks={axisScale.ticks}
           tick={{
             fontSize: 10,
             fill: '#94A3B8',
           }}
-        />
+/>
 
         <Tooltip
           content={<PriorityTooltip />}
@@ -331,34 +333,25 @@ export default function StatusBarChart({
           }}
         />
 
-        <Legend
-          verticalAlign="bottom"
-          iconType="square"
-          iconSize={8}
-          wrapperStyle={{
-            paddingTop: 8,
-            fontSize: 11,
-            color: '#64748B',
-          }}
-        />
+        
 
         {priorities.map((priority) => (
-          <Bar
-            key={priority}
-            dataKey={priority}
-            name={priority}
-            stackId="priority"
-            fill={getPriorityColor(priority)}
-            barSize={BAR_WIDTH}
-            shape={(shapeProps) => (
-              <RoundedStackSegment
-                {...shapeProps}
-                priority={priority}
-              />
-            )}
-            isAnimationActive
-          />
-        ))}
+  <Bar
+    key={priority}
+    dataKey={priority}
+    name={priority}
+    stackId="priority"
+    fill={getPriorityColor(priority)}
+    barSize={30}
+    shape={(shapeProps) => (
+      <LabeledRoundedStackSegment
+        {...shapeProps}
+        dataKey={priority}
+      />
+    )}
+    isAnimationActive={false}
+  />
+))}
       </BarChart>
     </ResponsiveContainer>
   )

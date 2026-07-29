@@ -16,15 +16,64 @@ export const DEPT_AGEING_WARNING = 7
 export const DEPT_AGEING_DANGER  = 14
 
 export const STATUS_DISPLAY = {
-  New:       'Not Started',
-  InProcess: 'In Process',
+  New: 'New',
+  Ongoing: 'Ongoing',
+  Overdue: 'Overdue',
   Completed: 'Completed',
+
+  // Temporary compatibility while backend/frontend deployments overlap.
+  InProcess: 'Ongoing',
+  'In Process': 'Ongoing',
+  InProgress: 'Ongoing',
+  'In Progress': 'Ongoing',
+
+  NotStarted: 'New',
+  'Not Started': 'New',
 }
 
 export const STATUS_COLORS = {
-  New:       { bg: 'bg-blue-100',   text: 'text-blue-700'   },
-  InProcess: { bg: 'bg-orange-100', text: 'text-orange-700' },
-  Completed: { bg: 'bg-green-100',  text: 'text-green-700'  },
+  New: {
+    bg: 'bg-blue-100',
+    text: 'text-blue-700',
+  },
+  Ongoing: {
+    bg: 'bg-amber-100',
+    text: 'text-amber-700',
+  },
+  Overdue: {
+    bg: 'bg-red-100',
+    text: 'text-red-700',
+  },
+  Completed: {
+    bg: 'bg-green-100',
+    text: 'text-green-700',
+  },
+
+  // Temporary compatibility.
+  InProcess: {
+    bg: 'bg-amber-100',
+    text: 'text-amber-700',
+  },
+  'In Process': {
+    bg: 'bg-amber-100',
+    text: 'text-amber-700',
+  },
+  InProgress: {
+    bg: 'bg-amber-100',
+    text: 'text-amber-700',
+  },
+  'In Progress': {
+    bg: 'bg-amber-100',
+    text: 'text-amber-700',
+  },
+  NotStarted: {
+    bg: 'bg-blue-100',
+    text: 'text-blue-700',
+  },
+  'Not Started': {
+    bg: 'bg-blue-100',
+    text: 'text-blue-700',
+  },
 }
 
 export const PRIORITY_COLORS = {
@@ -35,14 +84,20 @@ export const PRIORITY_COLORS = {
 
 export const CHART_COLORS = {
   status: {
-    New:       '#3B82F6',
-    InProcess: '#F97316',
+    New: '#3B82F6',
+    Ongoing: '#F59E0B',
+    Overdue: '#DC2626',
     Completed: '#22C55E',
+
+    // Temporary compatibility.
+    InProcess: '#F59E0B',
+    InProgress: '#F59E0B',
   },
+
   priority: {
-    Low:    '#22C55E',
+    Low: '#22C55E',
     Medium: '#F59E0B',
-    High:   '#EF4444',
+    High: '#EF4444',
   },
 }
 

@@ -11,6 +11,13 @@ import {
 
 import { CHART_COLORS } from '../../utils/constants'
 
+import LabeledRoundedStackSegment
+  from './LabeledRoundedStackSegment'
+
+import {
+  getIntegerAxisScale,
+} from '../../utils/chartScale'
+
 const PRIORITY_SERIES = [
   {
     key: 'low',
@@ -117,34 +124,71 @@ export default function IncomingFlowChart({
   rows = [],
 }) {
   const chartData = rows
-    .map((row) => ({
-      source_department: row.source_department,
-      low: Number(row.low) || 0,
-      medium: Number(row.medium) || 0,
-      high: Number(row.high) || 0,
-      total: Number(row.total) || 0,
-    }))
-    .filter((row) => row.total > 0)
+    .map((row) => {
+      const values = {
+        low: Number(row.low) || 0,
+        medium:
+          Number(row.medium) || 0,
+        high:
+          Number(row.high) || 0,
+      }
+
+      const total =
+        values.low +
+        values.medium +
+        values.high
+
+      const topKey =
+        [...PRIORITY_SERIES]
+          .reverse()
+          .find(
+            (series) =>
+              values[series.key] > 0,
+          )
+          ?.key ?? null
+
+      return {
+        source_department:
+          row.source_department,
+        ...values,
+        total,
+        topKey,
+      }
+    })
+    .filter(
+      (row) => row.total > 0,
+    )
 
   if (chartData.length === 0) {
     return (
-      <div className="flex h-[220px] items-center justify-center px-4 text-center text-sm text-slate-400">
-        No work orders are currently incoming to this department.
+      <div className="flex h-[200px] items-center justify-center px-4 text-center text-sm text-slate-400">
+        No work orders are currently
+        incoming to this department.
       </div>
     )
   }
 
+  const axisScale =
+    getIntegerAxisScale(
+      Math.max(
+        0,
+        ...chartData.map(
+          (row) => row.total,
+        ),
+      ),
+    )
+
   return (
     <ResponsiveContainer
       width="100%"
-      height={220}
+      height={200}
     >
       <BarChart
         data={chartData}
         margin={{
-          top: 8,
-          right: 4,
-          bottom: 18,
+          top: 28,
+          right: 30,
+          bottom: 14,
           left: 0,
         }}
       >
@@ -159,7 +203,7 @@ export default function IncomingFlowChart({
           axisLine={false}
           tickLine={false}
           interval={0}
-          height={44}
+          height={42}
           tick={<DepartmentTick />}
         />
 
@@ -167,7 +211,10 @@ export default function IncomingFlowChart({
           allowDecimals={false}
           axisLine={false}
           tickLine={false}
-          width={36}
+          interval={0}
+          width={34}
+          domain={axisScale.domain}
+          ticks={axisScale.ticks}
           tick={{
             fontSize: 9,
             fill: '#94A3B8',
@@ -182,7 +229,9 @@ export default function IncomingFlowChart({
         />
 
         <Tooltip
-          content={<IncomingFlowTooltip />}
+          content={
+            <IncomingFlowTooltip />
+          }
           cursor={{
             fill: '#F8FAFC',
           }}
@@ -200,16 +249,25 @@ export default function IncomingFlowChart({
           }}
         />
 
-        {PRIORITY_SERIES.map((series) => (
-          <Bar
-            key={series.key}
-            dataKey={series.key}
-            name={series.label}
-            stackId="priority"
-            fill={series.color}
-            maxBarSize={40}
-          />
-        ))}
+        {PRIORITY_SERIES.map(
+          (series) => (
+            <Bar
+              key={series.key}
+              dataKey={series.key}
+              name={series.label}
+              stackId="priority"
+              fill={series.color}
+              maxBarSize={34}
+              shape={(shapeProps) => (
+                <LabeledRoundedStackSegment
+                  {...shapeProps}
+                  dataKey={series.key}
+                />
+              )}
+              isAnimationActive={false}
+            />
+          ),
+        )}
       </BarChart>
     </ResponsiveContainer>
   )

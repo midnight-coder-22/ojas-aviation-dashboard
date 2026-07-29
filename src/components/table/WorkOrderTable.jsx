@@ -140,8 +140,13 @@ function parseSortableDate(value) {
  */
 const ACTIVE_DEADLINE_STATUSES = new Set([
   'new',
+  'ongoing',
+  'overdue',
+
+  // Temporary rollout compatibility.
   'notstarted',
   'inprocess',
+  'inprogress',
 ])
 
 function normalizeStatusKey(value) {
