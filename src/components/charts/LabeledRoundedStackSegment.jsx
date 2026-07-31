@@ -1,12 +1,56 @@
-import { Rectangle } from 'recharts'
+/**
+ * Construct an explicit SVG path instead of relying on Recharts Rectangle
+ * radius handling.
+ *
+ * This gives the upper visible segment reliably smooth upper corners.
+ */
+function createSegmentPath({
+  x,
+  y,
+  width,
+  height,
+  roundTop,
+  radius,
+}) {
+  const right = x + width
+  const bottom = y + height
+
+  const safeRadius = roundTop
+    ? Math.min(
+        Math.max(Number(radius) || 0, 0),
+        width / 2,
+        height,
+      )
+    : 0
+
+  if (safeRadius === 0) {
+    return [
+      `M ${x} ${y}`,
+      `H ${right}`,
+      `V ${bottom}`,
+      `H ${x}`,
+      'Z',
+    ].join(' ')
+  }
+
+  return [
+    `M ${x} ${bottom}`,
+    `V ${y + safeRadius}`,
+    `Q ${x} ${y} ${x + safeRadius} ${y}`,
+    `H ${right - safeRadius}`,
+    `Q ${right} ${y} ${right} ${y + safeRadius}`,
+    `V ${bottom}`,
+    `H ${x}`,
+    'Z',
+  ].join(' ')
+}
 
 /**
- * Draws one stacked-bar segment.
+ * Shared renderer for each priority section of a stacked bar.
  *
- * - The top non-zero segment gets rounded upper corners.
- * - Every non-zero segment receives a permanent value label.
- * - Small segments move their label to the right side.
- * - The complete stack total is displayed above the top segment.
+ * - Upper visible segment has smooth rounded corners.
+ * - Every non-zero section displays its value beside the bar.
+ * - The complete bar total is displayed above the stack.
  */
 export default function LabeledRoundedStackSegment({
   x,
@@ -16,7 +60,8 @@ export default function LabeledRoundedStackSegment({
   fill,
   payload,
   dataKey,
-  radius = 5,
+  radius = 7,
+  showTotal = true,
 }) {
   const numericX = Number(x)
   const numericY = Number(y)
@@ -27,16 +72,14 @@ export default function LabeledRoundedStackSegment({
     payload?.[dataKey] ?? 0,
   )
 
-  const dimensions = [
-    numericX,
-    numericY,
-    numericWidth,
-    numericHeight,
-    value,
-  ]
-
   if (
-    !dimensions.every(Number.isFinite) ||
+    ![
+      numericX,
+      numericY,
+      numericWidth,
+      numericHeight,
+      value,
+    ].every(Number.isFinite) ||
     numericWidth <= 0 ||
     numericHeight <= 0 ||
     value <= 0
@@ -47,57 +90,45 @@ export default function LabeledRoundedStackSegment({
   const isTopSegment =
     payload?.topKey === dataKey
 
-  const fitsInside =
-    numericHeight >= 15 &&
-    numericWidth >= 22
-
-  const labelX = fitsInside
-    ? numericX + numericWidth / 2
-    : numericX + numericWidth + 4
-
-  const labelY =
-    numericY + numericHeight / 2
-
-  const normalizedFill =
-    String(fill ?? '').toUpperCase()
-
-  // Amber needs dark text; green and red work better with white.
-  const insideLabelColor =
-    normalizedFill === '#F59E0B'
-      ? '#0F172A'
-      : '#FFFFFF'
-
-  const stackTotal = Number(
+  const total = Number(
     payload?.total ?? value,
   )
 
+  const sectionLabelX =
+    numericX + numericWidth + 5
+
+  const sectionLabelY =
+    numericY + numericHeight / 2
+
+  const path = createSegmentPath({
+    x: numericX,
+    y: numericY,
+    width: numericWidth,
+    height: numericHeight,
+    roundTop: isTopSegment,
+    radius,
+  })
+
   return (
     <g>
-      <Rectangle
-        x={numericX}
-        y={numericY}
-        width={numericWidth}
-        height={numericHeight}
+      <path
+        d={path}
         fill={fill}
-        radius={
-          isTopSegment
-            ? [radius, radius, 0, 0]
-            : [0, 0, 0, 0]
-        }
+        stroke="none"
+        shapeRendering="geometricPrecision"
       />
 
+      {/* Number beside this priority section */}
       <text
-        x={labelX}
-        y={labelY}
-        textAnchor={
-          fitsInside ? 'middle' : 'start'
-        }
+        x={sectionLabelX}
+        y={sectionLabelY}
+        textAnchor="start"
         dominantBaseline="middle"
-        fill={
-          fitsInside
-            ? insideLabelColor
-            : '#475569'
-        }
+        fill="#334155"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+        strokeLinejoin="round"
+        paintOrder="stroke"
         fontSize={9}
         fontWeight={700}
         pointerEvents="none"
@@ -105,7 +136,8 @@ export default function LabeledRoundedStackSegment({
         {value}
       </text>
 
-      {isTopSegment && (
+      {/* Complete total above the full stacked bar */}
+      {showTotal && isTopSegment && (
         <text
           x={
             numericX +
@@ -117,11 +149,15 @@ export default function LabeledRoundedStackSegment({
           )}
           textAnchor="middle"
           fill="#334155"
+          stroke="#FFFFFF"
+          strokeWidth={3}
+          strokeLinejoin="round"
+          paintOrder="stroke"
           fontSize={10}
           fontWeight={700}
           pointerEvents="none"
         >
-          {stackTotal}
+          {total}
         </text>
       )}
     </g>

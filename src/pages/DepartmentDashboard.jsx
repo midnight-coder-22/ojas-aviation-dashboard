@@ -7,6 +7,7 @@ import LoadingSkeleton from '../components/ui/LoadingSkeleton'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorState from '../components/ui/ErrorState'
 
+import ChartCard from '../components/charts/ChartCard'
 import StatusBarChart from '../components/charts/StatusBarChart'
 import PriorityPieChart from '../components/charts/PriorityPieChart'
 import FlowToNextDeptChart from '../components/charts/FlowToNextDeptChart'
@@ -21,35 +22,55 @@ import { useIncomingFlow } from '../hooks/useIncomingFlow'
 
 import { useDashboard } from '../context/DashboardContext'
 
-import { slugToDept, CHART_COLORS, } from '../utils/constants'
+import { slugToDept } from '../utils/constants'
 import { formatDeptHeading } from '../utils/formatters'
 
+/*
+ * Stable fallback arrays prevent a new empty-array reference from being
+ * created on every render. This keeps the useMemo dependency lists stable.
+ */
 const EMPTY_WORK_ORDERS = []
+const EMPTY_FLAGS = []
 
-const CHART_CARD_CLASS = `
-  flex h-[290px] min-w-0 flex-col overflow-hidden
-  rounded-xl border border-slate-200 bg-white
-  p-3 shadow-sm
-`
+/*
+ * Build a usable priority breakdown even while the summary API is loading or
+ * when it temporarily fails. The summary response remains the preferred source.
+ */
+function buildPriorityBreakdown(workOrders) {
+  return workOrders.reduce(
+    (breakdown, workOrder) => {
+      const normalizedPriority = String(
+        workOrder.priority ?? 'Low',
+      )
+        .trim()
+        .toLowerCase()
 
-const PRIORITY_LEGEND = [
-  {
-    label: 'Low',
-    color:
-      CHART_COLORS.priority.Low,
-  },
-  {
-    label: 'Medium',
-    color:
-      CHART_COLORS.priority.Medium,
-  },
-  {
-    label: 'High',
-    color:
-      CHART_COLORS.priority.High,
-  },
-] 
+      if (normalizedPriority === 'high') {
+        breakdown.High += 1
+      } else if (normalizedPriority === 'medium') {
+        breakdown.Medium += 1
+      } else {
+        breakdown.Low += 1
+      }
 
+      return breakdown
+    },
+    {
+      Low: 0,
+      Medium: 0,
+      High: 0,
+    },
+  )
+}
+
+/*
+ * Standard loading card matching the final height and shape of ChartCard.
+ */
+function ChartLoadingCard() {
+  return (
+    <div className="h-[290px] animate-pulse rounded-xl border border-slate-200 bg-slate-200" />
+  )
+}
 
 export default function DepartmentDashboard() {
   const { dept } = useParams()
@@ -62,29 +83,37 @@ export default function DepartmentDashboard() {
   const flagsQuery = useDeptFlags(deptName)
   const incomingFlowQuery = useIncomingFlow(deptName)
 
-  const rawWorkOrders = deptQuery.data?.data ?? EMPTY_WORK_ORDERS
+  const rawWorkOrders =
+    deptQuery.data?.data ?? EMPTY_WORK_ORDERS
+
   const summary = summaryQuery.data
   const incomingFlow = incomingFlowQuery.data
-  const recordCount = deptQuery.data?.record_count ?? 0
-  const totalWorkOrders = summary?.total_wos ?? recordCount
+
+  const recordCount =
+    deptQuery.data?.record_count ?? rawWorkOrders.length
+
+  const totalWorkOrders =
+    summary?.total_wos ?? recordCount
 
   /*
    * Build a lookup containing every WO that currently has an active flag.
-   * GET /api/flags/{department} only returns active flags.
+   * GET /api/flags/{department} returns the active flag records.
    */
   const activeFlagIds = useMemo(() => {
-    const flags = flagsQuery.data ?? []
+    const flags = flagsQuery.data ?? EMPTY_FLAGS
 
     return new Set(
-      flags.map((flag) => String(flag.wo_id).trim()),
+      flags.map((flag) =>
+        String(flag.wo_id ?? '').trim(),
+      ),
     )
   }, [flagsQuery.data])
 
   /*
-   * Once the dedicated flags API succeeds, use it as the live source of
+   * Once the dedicated flags API succeeds, it becomes the live source of
    * truth for has_active_flag.
    *
-   * Until it succeeds, use the value supplied by the department API.
+   * Until then, preserve the value supplied by the department dashboard API.
    */
   const workOrders = useMemo(() => {
     if (!flagsQuery.isSuccess) {
@@ -93,8 +122,9 @@ export default function DepartmentDashboard() {
 
     return rawWorkOrders.map((row) => ({
       ...row,
+
       has_active_flag: activeFlagIds.has(
-        String(row.wo_id).trim(),
+        String(row.wo_id ?? '').trim(),
       ),
     }))
   }, [
@@ -103,13 +133,50 @@ export default function DepartmentDashboard() {
     flagsQuery.isSuccess,
   ])
 
-  const isLoading =
-    deptQuery.isLoading || summaryQuery.isLoading
+  /*
+   * The summary API is preferred, but this local fallback keeps the Priority
+   * visual usable if the summary request is still loading or fails.
+   */
+  const fallbackPriorityBreakdown = useMemo(
+    () => buildPriorityBreakdown(workOrders),
+    [workOrders],
+  )
 
+  const priorityBreakdown =
+    summary?.priority_breakdown ??
+    fallbackPriorityBreakdown
+
+  /*
+   * Count only work orders that actually have a next department.
+   * This value appears in the Flow to Next Dept metric card.
+   */
+  const flowingWorkOrders = useMemo(
+    () =>
+      workOrders.reduce(
+        (total, workOrder) => {
+          const nextDepartment = String(
+            workOrder.next_dept ?? '',
+          ).trim()
+
+          return total + (nextDepartment ? 1 : 0)
+        },
+        0,
+      ),
+    [workOrders],
+  )
+
+  /*
+   * Department data controls the table, Status chart, and Flow chart.
+   * Summary and Incoming WOs are allowed to load independently.
+   */
+  const isLoading = deptQuery.isLoading
   const isError = deptQuery.isError
 
   /*
    * Tell DashboardContext which department is currently open.
+   *
+   * cancelFlag clears unfinished flag-selection state when the user leaves
+   * the department dashboard.
    */
   useEffect(() => {
     db.setCurrentDept(deptName)
@@ -119,14 +186,19 @@ export default function DepartmentDashboard() {
       db.cancelFlag()
     }
 
+    /*
+     * DashboardContext action functions are intentionally excluded.
+     * Including the complete db object would cause this effect to run whenever
+     * the provider value receives a new object reference.
+     */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deptName])
 
   /*
-   * Keep the merged work-order data in context.
+   * Keep the merged work-order rows in DashboardContext.
    *
-   * TopNav uses this for:
-   * - notification count
+   * TopNav uses these rows for:
+   * - notification counts
    * - Add Flag mode
    * - Resolve Flag mode
    */
@@ -137,27 +209,51 @@ export default function DepartmentDashboard() {
   }, [workOrders])
 
   const handleRowSelect = (woId) => {
+    const normalizedWoId = String(
+      woId ?? '',
+    ).trim()
+
+    const matchingWorkOrder = workOrders.find(
+      (workOrder) =>
+        String(
+          workOrder.wo_id ?? '',
+        ).trim() === normalizedWoId,
+    )
+
+    /*
+     * Prefer the ID stored on the matching row so it remains consistent with
+     * the IDs already placed in DashboardContext.
+     */
+    const canonicalWoId =
+      matchingWorkOrder?.wo_id ?? woId
+
     if (db.flagMode === 'add') {
-      /* Existing flags cannot be deselected while adding flags. */
-      if (db.preExistingIds.has(woId)) {
+      /*
+       * Existing active flags are locked while the user adds new flags.
+       */
+      if (
+        db.preExistingIds.has(
+          canonicalWoId,
+        )
+      ) {
         return
       }
 
-      db.toggleWoId(woId)
+      db.toggleWoId(canonicalWoId)
       return
     }
 
     if (db.flagMode === 'resolve') {
-      /* Only rows with active flags can be selected for resolution. */
-      const row = workOrders.find(
-        (workOrder) => workOrder.wo_id === woId,
-      )
-
-      if (!row?.has_active_flag) {
+      /*
+       * Only rows with active flags may be selected for resolution.
+       */
+      if (
+        !matchingWorkOrder?.has_active_flag
+      ) {
         return
       }
 
-      db.toggleWoId(woId)
+      db.toggleWoId(canonicalWoId)
     }
   }
 
@@ -171,7 +267,9 @@ export default function DepartmentDashboard() {
           ${db.isFullscreen ? 'py-3' : 'pb-2 pt-2'}
         `}
       >
-        {/* Department heading */}
+        {/*
+         * Keep the department heading visible in normal and fullscreen views.
+         */}
         <div className="shrink-0">
           <h1 className="text-xl font-bold leading-tight text-slate-900">
             {formatDeptHeading(deptName)}
@@ -179,150 +277,80 @@ export default function DepartmentDashboard() {
         </div>
 
         {/*
-         * All four visuals live in this single grid.
+         * Standardized chart grid:
          *
-         * At desktop width they render in one row:
          * Status | Priority | Flow to Next Dept | Incoming WOs
          */}
         <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {isLoading ? (
-            [...Array(3)].map((_, index) => (
-              <div
-                key={`chart-loading-${index}`}
-                className="h-[290px] animate-pulse rounded-xl bg-slate-200"
-              />
-            ))
+            Array.from(
+              { length: 3 },
+              (_, index) => (
+                <ChartLoadingCard
+                  key={`primary-chart-loading-${index}`}
+                />
+              ),
+            )
           ) : (
             <>
               {/* Status */}
-              {/* Status */}
-<div className={CHART_CARD_CLASS}>
-  <div className="mb-1.5 flex shrink-0 items-start justify-between gap-2">
-    <div className="min-w-0">
-      <p className="text-xs uppercase leading-none tracking-wider text-slate-400">
-        Chart
-      </p>
-
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-        <p className="text-sm font-semibold text-slate-800">
-          Status
-        </p>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {PRIORITY_LEGEND.map(
-            (item) => (
-              <span
-                key={item.label}
-                className="inline-flex items-center gap-1 text-[9px] font-medium text-slate-500"
+              <ChartCard
+                title="Status"
+                subtitle="Work orders by status"
+                metricValue={totalWorkOrders}
+                metricLabel="Total WOs"
+                showPriorityLegend
               >
-                <span
-                  className="h-2 w-2 rounded-sm"
-                  style={{
-                    backgroundColor:
-                      item.color,
-                  }}
+                <StatusBarChart
+                  workOrders={workOrders}
                 />
-
-                {item.label}
-              </span>
-            ),
-          )}
-        </div>
-      </div>
-    </div>
-
-    <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-center">
-      <p className="text-lg font-bold leading-none text-slate-900">
-        {totalWorkOrders}
-      </p>
-
-      <p className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-slate-500">
-        Total WOs
-      </p>
-    </div>
-  </div>
-
-  <div className="min-h-0 flex-1">
-    <StatusBarChart
-      workOrders={workOrders}
-    />
-  </div>
-</div>
-
-
+              </ChartCard>
 
               {/* Priority */}
-              <div className={CHART_CARD_CLASS}>                
-                <div className="shrink-0">
-                  <p className="text-xs uppercase leading-none tracking-wider text-slate-400">
-                    Chart
-                  </p>
-
-                  <p className="mb-1.5 mt-0.5 text-sm font-semibold text-slate-800">
-                    Priority
-                  </p>
-                </div>
-
-                <div className="min-h-0 flex-1">
-                  <PriorityPieChart
-                    priorityBreakdown={
-                      summary?.priority_breakdown ?? {}
-                    }
-                  />
-                </div>
-              </div>
+              <ChartCard
+                title="Priority"
+                subtitle="Overall priority breakdown"
+                metricValue={totalWorkOrders}
+                metricLabel="Total WOs"
+              >
+                <PriorityPieChart
+                  priorityBreakdown={
+                    priorityBreakdown
+                  }
+                />
+              </ChartCard>
 
               {/* Flow to next department */}
-              <div className={CHART_CARD_CLASS}>
-                <div className="shrink-0">
-                  <p className="text-xs uppercase leading-none tracking-wider text-slate-400">
-                    Chart
-                  </p>
-
-                  <p className="mb-3 mt-0.5 text-sm font-semibold text-slate-800">
-                    Flow to Next Dept
-                  </p>
-                </div>
-
-                <div className="min-h-0 flex-1">
-                  <FlowToNextDeptChart data={workOrders} />
-                </div>
-              </div>
+              <ChartCard
+                title="Flow to Next Dept"
+                subtitle="Next department by priority"
+                metricValue={
+                  flowingWorkOrders
+                }
+                metricLabel="Flowing"
+                showPriorityLegend
+              >
+                <FlowToNextDeptChart
+                  data={workOrders}
+                />
+              </ChartCard>
             </>
           )}
 
-          {/* Incoming flow */}
-          <div className="flex h-[330px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-2 flex shrink-0 items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs uppercase leading-none tracking-wider text-slate-400">
-                  Chart
-                </p>
-
-                <p className="mt-0.5 text-sm font-semibold text-slate-800">
-                  Incoming WOs
-                </p>
-
-                <p className="mt-1 truncate text-[10px] text-slate-400">
-                  Incoming to {deptName}
-                </p>
-              </div>
-
-              <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-center">
-                <p className="text-lg font-bold leading-none text-slate-900">
-                  {incomingFlow?.total_wos ?? 0}
-                </p>
-
-                <p className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-slate-500">
-                  Incoming
-                </p>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1">
-              {incomingFlowQuery.isLoading ? (
-                <div className="h-full animate-pulse rounded-lg bg-slate-100" />
-              ) : incomingFlowQuery.isError ? (
+          {/* Incoming work orders load independently from department data. */}
+          {incomingFlowQuery.isLoading ? (
+            <ChartLoadingCard />
+          ) : (
+            <ChartCard
+              title="Incoming WOs"
+              subtitle={`Incoming to ${deptName}`}
+              metricValue={
+                incomingFlow?.total_wos ?? 0
+              }
+              metricLabel="Incoming"
+              showPriorityLegend
+            >
+              {incomingFlowQuery.isError ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
                   <p className="text-sm text-slate-500">
                     Incoming-flow data could not be loaded.
@@ -330,7 +358,9 @@ export default function DepartmentDashboard() {
 
                   <button
                     type="button"
-                    onClick={() => incomingFlowQuery.refetch()}
+                    onClick={() =>
+                      incomingFlowQuery.refetch()
+                    }
                     className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                   >
                     Retry
@@ -338,17 +368,19 @@ export default function DepartmentDashboard() {
                 </div>
               ) : (
                 <IncomingFlowChart
-                  rows={incomingFlow?.data ?? []}
+                  rows={
+                    incomingFlow?.data ?? []
+                  }
                 />
               )}
-            </div>
-          </div>
+            </ChartCard>
+          )}
         </div>
 
         {/* Work-order table */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 py-2">
-              <span className="text-sm font-bold text-slate-800">
+            <span className="text-sm font-bold text-slate-800">
               Work Orders
             </span>
 
@@ -367,14 +399,18 @@ export default function DepartmentDashboard() {
             {isError && (
               <div className="pt-4">
                 <ErrorState
-                  onRetry={() => deptQuery.refetch()}
+                  onRetry={() =>
+                    deptQuery.refetch()
+                  }
                 />
               </div>
             )}
 
             {!isLoading &&
               !isError &&
-              workOrders.length === 0 && <EmptyState />}
+              workOrders.length === 0 && (
+                <EmptyState />
+              )}
 
             {!isLoading &&
               !isError &&
@@ -382,8 +418,12 @@ export default function DepartmentDashboard() {
                 <WorkOrderTable
                   data={workOrders}
                   flagMode={db.flagMode}
-                  selectedWoIds={db.selectedWoIds}
-                  onRowSelect={handleRowSelect}
+                  selectedWoIds={
+                    db.selectedWoIds
+                  }
+                  onRowSelect={
+                    handleRowSelect
+                  }
                   searchText=""
                 />
               )}
@@ -391,9 +431,8 @@ export default function DepartmentDashboard() {
         </div>
 
         {/*
-         * TopNav is outside the fullscreen element, so it disappears when
-         * fullscreen starts. This button remains inside the fullscreen
-         * element and allows the user to exit.
+         * TopNav is outside the fullscreen target. This button is inside the
+         * target so it remains available when the dashboard enters fullscreen.
          */}
         {db.isFullscreen && (
           <button

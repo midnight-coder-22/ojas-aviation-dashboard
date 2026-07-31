@@ -7,29 +7,80 @@ import {
 } from 'recharts'
 
 import {
-  CHART_COLORS,
-} from '../../utils/constants'
+  PRIORITY_SERIES,
+} from '../../utils/priorityChart'
 
-const PRIORITY_ORDER = [
-  'Low',
-  'Medium',
-  'High',
-]
+const RADIAN = Math.PI / 180
+
+function renderSectorValue({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  value,
+  name,
+}) {
+  if (!value) {
+    return null
+  }
+
+  const radius =
+    innerRadius +
+    (
+      outerRadius -
+      innerRadius
+    ) * 0.58
+
+  const x =
+    cx +
+    radius *
+      Math.cos(
+        -midAngle * RADIAN,
+      )
+
+  const y =
+    cy +
+    radius *
+      Math.sin(
+        -midAngle * RADIAN,
+      )
+
+  const textColor =
+    name === 'Medium'
+      ? '#0F172A'
+      : '#FFFFFF'
+
+  return (
+    <text
+      x={x}
+      y={y}
+      fill={textColor}
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontSize={10}
+      fontWeight={700}
+      pointerEvents="none"
+    >
+      {value}
+    </text>
+  )
+}
 
 export default function PriorityPieChart({
   priorityBreakdown = {},
 }) {
-  const data = PRIORITY_ORDER.map(
-    (priority) => ({
-      name: priority,
+  const data = PRIORITY_SERIES.map(
+    (series) => ({
+      key: series.key,
+      name: series.label,
       value:
         Number(
-          priorityBreakdown[priority],
+          priorityBreakdown[
+            series.label
+          ],
         ) || 0,
-      color:
-        CHART_COLORS.priority[
-          priority
-        ] || '#94A3B8',
+      color: series.color,
     }),
   )
 
@@ -39,23 +90,23 @@ export default function PriorityPieChart({
     0,
   )
 
-  const visibleData = data.filter(
-    (entry) => entry.value > 0,
-  )
-
   if (total === 0) {
     return (
-      <div className="flex h-[190px] items-center justify-center text-sm text-slate-400">
+      <div className="flex h-full min-h-[175px] items-center justify-center text-sm text-slate-400">
         No priority data available
       </div>
     )
   }
 
+  const visibleData = data.filter(
+    (entry) => entry.value > 0,
+  )
+
   return (
     <div className="flex h-full items-center justify-center gap-3">
       <ResponsiveContainer
-        width={180}
-        height={180}
+        width={160}
+        height={160}
       >
         <PieChart>
           <Pie
@@ -63,23 +114,23 @@ export default function PriorityPieChart({
             cx="50%"
             cy="50%"
             innerRadius={0}
-            outerRadius={62}
+            outerRadius={64}
             dataKey="value"
+            nameKey="name"
             stroke="#FFFFFF"
             strokeWidth={2}
-            label={({ value }) => value}
-            labelLine={{
-              stroke: '#CBD5E1',
-              strokeWidth: 1,
-            }}
+            labelLine={false}
+            label={renderSectorValue}
             isAnimationActive={false}
           >
-            {visibleData.map((entry) => (
-              <Cell
-                key={entry.name}
-                fill={entry.color}
-              />
-            ))}
+            {visibleData.map(
+              (entry) => (
+                <Cell
+                  key={entry.key}
+                  fill={entry.color}
+                />
+              ),
+            )}
           </Pie>
 
           <Tooltip
@@ -93,7 +144,7 @@ export default function PriorityPieChart({
         </PieChart>
       </ResponsiveContainer>
 
-      <div className="flex min-w-[118px] flex-col gap-2.5">
+      <div className="flex min-w-[115px] flex-col gap-2.5">
         {data.map((entry) => {
           const percentage =
             total > 0
@@ -107,10 +158,10 @@ export default function PriorityPieChart({
 
           return (
             <div
-              key={entry.name}
+              key={entry.key}
               className="flex items-center justify-between gap-4"
             >
-              <div className="flex items-center gap-2">
+              <span className="flex items-center gap-2 text-sm text-slate-600">
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-sm"
                   style={{
@@ -119,12 +170,10 @@ export default function PriorityPieChart({
                   }}
                 />
 
-                <span className="text-sm text-slate-600">
-                  {entry.name}
-                </span>
-              </div>
+                {entry.name}
+              </span>
 
-              <div className="flex items-center gap-2 text-sm">
+              <span className="flex items-center gap-2 text-sm">
                 <span className="font-semibold text-slate-800">
                   {entry.value}
                 </span>
@@ -132,7 +181,7 @@ export default function PriorityPieChart({
                 <span className="min-w-8 text-right text-slate-400">
                   {percentage}%
                 </span>
-              </div>
+              </span>
             </div>
           )
         })}
