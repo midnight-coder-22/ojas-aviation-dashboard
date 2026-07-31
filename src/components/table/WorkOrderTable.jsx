@@ -25,12 +25,16 @@ const TABLE_COLUMN_COUNT = 13
 /*
  * Fullscreen auto-scroll settings.
  *
- * 18 pixels per second is intentionally slow enough for a dashboard display.
- * The short delay keeps the first rows visible before movement begins.
+ * The table continuously cycles through the current filtered and sorted rows.
+ * Two empty rows separate the final entry from the next cycle's first entry.
  */
 const AUTO_SCROLL_PIXELS_PER_SECOND = 18
 const AUTO_SCROLL_START_DELAY_MS = 1500
 const MAX_ANIMATION_FRAME_GAP_MS = 100
+const FULLSCREEN_SPACER_ROW_COUNT = 2
+const FULLSCREEN_SPACER_ROW_HEIGHT_PX = 52
+const ESTIMATED_VISIBLE_ROW_CAPACITY = 18
+const MAX_FULLSCREEN_CYCLE_COUNT = 8
 
 /*
  * Fields that can be sorted by clicking their table headers.
@@ -440,6 +444,8 @@ export default function WorkOrderTable({
     useState(null)
 
   const tableViewportRef = useRef(null)
+  const firstCycleStartRef = useRef(null)
+  const secondCycleStartRef = useRef(null)
 
   const safeData = useMemo(
     () =>
@@ -574,18 +580,108 @@ export default function WorkOrderTable({
   const pageStart =
     (page - 1) * perPage
 
-  const pageData = sorted.slice(
-    pageStart,
-    pageStart + perPage,
+  const pageData = useMemo(
+    () =>
+      sorted.slice(
+        pageStart,
+        pageStart + perPage,
+      ),
+    [pageStart, perPage, sorted],
   )
 
   /*
-   * Normal mode uses the existing page slice. Fullscreen mode renders every
-   * sorted/filtered row so the table can scroll continuously to the last entry.
+   * Normal mode uses the existing page slice. Fullscreen ignores pagination
+   * and uses every row after the current filtering and sorting are applied.
    */
   const displayedRows = isFullscreen
     ? sorted
     : pageData
+
+  /*
+   * Fullscreen renders enough repeated cycles to keep the viewport scrollable
+   * even when the current filter leaves only a small number of rows.
+   * Large datasets use only two cycles to avoid unnecessary DOM growth.
+   */
+  const fullscreenCycleCount = useMemo(() => {
+    if (!isFullscreen || sorted.length === 0) {
+      return 1
+    }
+
+    const estimatedRowsPerCycle =
+      sorted.length +
+      FULLSCREEN_SPACER_ROW_COUNT
+
+    const requiredCycleCount =
+      1 +
+      Math.ceil(
+        ESTIMATED_VISIBLE_ROW_CAPACITY /
+          estimatedRowsPerCycle,
+      )
+
+    return Math.min(
+      MAX_FULLSCREEN_CYCLE_COUNT,
+      Math.max(2, requiredCycleCount),
+    )
+  }, [isFullscreen, sorted.length])
+
+  /*
+   * The repeated items form this visual sequence in fullscreen:
+   * rows 1..N -> blank row -> blank row -> rows 1..N -> ...
+   */
+  const tableItems = useMemo(() => {
+    if (!isFullscreen) {
+      return pageData.map(
+        (row, rowIndex) => ({
+          type: 'row',
+          row,
+          rowIndex,
+          cycleIndex: 0,
+        }),
+      )
+    }
+
+    const items = []
+
+    for (
+      let cycleIndex = 0;
+      cycleIndex < fullscreenCycleCount;
+      cycleIndex += 1
+    ) {
+      sorted.forEach((row, rowIndex) => {
+        items.push({
+          type: 'row',
+          row,
+          rowIndex,
+          cycleIndex,
+        })
+      })
+
+      if (
+        cycleIndex <
+        fullscreenCycleCount - 1
+      ) {
+        for (
+          let spacerIndex = 0;
+          spacerIndex <
+          FULLSCREEN_SPACER_ROW_COUNT;
+          spacerIndex += 1
+        ) {
+          items.push({
+            type: 'spacer',
+            spacerIndex,
+            cycleIndex,
+          })
+        }
+      }
+    }
+
+    return items
+  }, [
+    fullscreenCycleCount,
+    isFullscreen,
+    pageData,
+    sorted,
+  ])
 
   const showingStart =
     sorted.length === 0
@@ -614,15 +710,20 @@ export default function WorkOrderTable({
     searchText,
     sortDir,
     sortField,
+    sorted,
   ])
 
   /*
    * Auto-scroll only the table viewport while the dashboard is fullscreen.
    *
-   * It deliberately pauses while a row is expanded or while flag-selection
-   * mode is active, preventing rows from moving during an interaction. The
-   * animation stops with the final row visible; it does not jump back to the
-   * beginning.
+   * Fullscreen contains repeated copies of the same filtered and sorted rows.
+   * The distance between the first row of cycle one and the first row of cycle
+   * two is one complete visual cycle, including the two blank separator rows.
+   * When that distance is crossed, scrollTop is reduced by exactly one cycle.
+   * Because the rows at both positions are identical, the reset is invisible
+   * and the table appears to scroll forever.
+   *
+   * Auto-scroll pauses while a row is expanded or flag-selection mode is active.
    */
   useEffect(() => {
     const viewport = tableViewportRef.current
@@ -643,6 +744,45 @@ export default function WorkOrderTable({
       viewport.scrollTop
     let delayRemaining =
       AUTO_SCROLL_START_DELAY_MS
+
+    const getCycleHeight = () => {
+      const firstCycleStart =
+        firstCycleStartRef.current
+      const secondCycleStart =
+        secondCycleStartRef.current
+
+      if (
+        !firstCycleStart ||
+        !secondCycleStart
+      ) {
+        return 0
+      }
+
+      return Math.max(
+        0,
+        secondCycleStart.offsetTop -
+          firstCycleStart.offsetTop,
+      )
+    }
+
+    const normalizeToFirstCycle = (
+      scrollTop,
+      cycleHeight,
+    ) => {
+      if (cycleHeight <= 0) {
+        return scrollTop
+      }
+
+      let normalizedScrollTop = scrollTop
+
+      while (
+        normalizedScrollTop >= cycleHeight
+      ) {
+        normalizedScrollTop -= cycleHeight
+      }
+
+      return normalizedScrollTop
+    }
 
     const scrollFrame = (timestamp) => {
       if (previousTimestamp === null) {
@@ -670,23 +810,27 @@ export default function WorkOrderTable({
         return
       }
 
+      const cycleHeight = getCycleHeight()
       const maximumScrollTop = Math.max(
         0,
         viewport.scrollHeight -
           viewport.clientHeight,
       )
 
-      /*
-       * No scrolling is needed when all rows fit inside the viewport.
-       */
-      if (maximumScrollTop <= 0) {
+      if (
+        cycleHeight <= 0 ||
+        maximumScrollTop <= 0
+      ) {
+        animationFrameId =
+          window.requestAnimationFrame(
+            scrollFrame,
+          )
         return
       }
 
       /*
-       * Keep fractional movement in JavaScript so scrolling remains smooth
-       * even on a browser that rounds the DOM scrollTop value. A meaningful
-       * manual scroll is respected and becomes the new starting position.
+       * Respect manual scrolling. If the user moves the table, continue from
+       * the equivalent position within the first logical cycle.
        */
       if (
         Math.abs(
@@ -695,19 +839,13 @@ export default function WorkOrderTable({
         ) > 2
       ) {
         intendedScrollTop =
-          viewport.scrollTop
-      }
+          normalizeToFirstCycle(
+            viewport.scrollTop,
+            cycleHeight,
+          )
 
-      /*
-       * Stop with the last entry visible instead of looping or jumping.
-       */
-      if (
-        intendedScrollTop >=
-        maximumScrollTop - 1
-      ) {
         viewport.scrollTop =
-          maximumScrollTop
-        return
+          intendedScrollTop
       }
 
       const movement =
@@ -715,12 +853,14 @@ export default function WorkOrderTable({
           elapsedMilliseconds) /
         1000
 
-      intendedScrollTop = Math.min(
-        maximumScrollTop,
-        intendedScrollTop + movement,
-      )
+      intendedScrollTop =
+        normalizeToFirstCycle(
+          intendedScrollTop + movement,
+          cycleHeight,
+        )
 
-      viewport.scrollTop = intendedScrollTop
+      viewport.scrollTop =
+        intendedScrollTop
 
       animationFrameId =
         window.requestAnimationFrame(
@@ -744,10 +884,12 @@ export default function WorkOrderTable({
     displayedRows.length,
     expandedWoId,
     flagMode,
+    fullscreenCycleCount,
     isFullscreen,
     searchText,
     sortDir,
     sortField,
+    sorted,
   ])
 
   const handleSort = (field) => {
@@ -1102,33 +1244,71 @@ export default function WorkOrderTable({
                 </td>
               </tr>
             ) : (
-              displayedRows.map(
-                (row, rowIndex) => {
-                  const woId = normalizeWoId(
-                    row?.wo_id,
+              tableItems.map((item) => {
+                if (item.type === 'spacer') {
+                  return (
+                    <tr
+                      key={`fullscreen-spacer-${item.cycleIndex}-${item.spacerIndex}`}
+                      aria-hidden="true"
+                      className="pointer-events-none bg-white"
+                    >
+                      <td
+                        colSpan={TABLE_COLUMN_COUNT}
+                        className="border-0 p-0"
+                      >
+                        <div
+                          style={{
+                            height:
+                              FULLSCREEN_SPACER_ROW_HEIGHT_PX,
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )
+                }
+
+                const {
+                  row,
+                  rowIndex,
+                  cycleIndex,
+                } = item
+
+                const woId = normalizeWoId(
+                  row?.wo_id,
+                )
+
+                const rowIsFlagged =
+                  isActiveFlag(
+                    row?.has_active_flag,
                   )
 
-                  const rowIsFlagged =
-                    isActiveFlag(
-                      row?.has_active_flag,
-                    )
+                const rowIsSelected =
+                  normalizedSelectedWoIds.has(
+                    woId,
+                  )
 
-                  const rowIsSelected =
-                    normalizedSelectedWoIds.has(
-                      woId,
-                    )
+                const rowKey = isFullscreen
+                  ? `fullscreen-${cycleIndex}-${woId || 'row'}-${rowIndex}`
+                  : `${woId || 'row'}-${rowIndex}`
 
-                  const rowKey =
-                    woId ||
-                    `${
-                      isFullscreen
-                        ? 'fullscreen'
-                        : page
-                    }-${rowIndex}`
-
-                  return (
+                return (
                     <Fragment key={rowKey}>
                       <tr
+                        ref={(node) => {
+                          if (rowIndex !== 0) {
+                            return
+                          }
+
+                          if (cycleIndex === 0) {
+                            firstCycleStartRef.current =
+                              node
+                          }
+
+                          if (cycleIndex === 1) {
+                            secondCycleStartRef.current =
+                              node
+                          }
+                        }}
                         onClick={() =>
                           handleRowClick(row)
                         }
@@ -1376,8 +1556,7 @@ export default function WorkOrderTable({
                         )}
                     </Fragment>
                   )
-                },
-              )
+              })
             )}
           </tbody>
         </table>
