@@ -6,7 +6,6 @@ import AppLayout from '../components/layout/AppLayout'
 import LoadingSkeleton from '../components/ui/LoadingSkeleton'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorState from '../components/ui/ErrorState'
-
 import ChartCard from '../components/charts/ChartCard'
 import StatusBarChart from '../components/charts/StatusBarChart'
 import PriorityPieChart from '../components/charts/PriorityPieChart'
@@ -14,7 +13,6 @@ import FlowToNextDeptChart from '../components/charts/FlowToNextDeptChart'
 import IncomingFlowChart from '../components/charts/IncomingFlowChart'
 
 import WorkOrderTable from '../components/table/WorkOrderTable'
-
 import { useDeptData } from '../hooks/useDeptData'
 import { useDeptFlags } from '../hooks/useDeptFlags'
 import { useSummary } from '../hooks/useSummary'
@@ -77,7 +75,6 @@ export default function DepartmentDashboard() {
   const deptName = slugToDept(dept)
 
   const db = useDashboard()
-
   const deptQuery = useDeptData(deptName)
   const summaryQuery = useSummary(deptName)
   const flagsQuery = useDeptFlags(deptName)
@@ -122,7 +119,6 @@ export default function DepartmentDashboard() {
 
     return rawWorkOrders.map((row) => ({
       ...row,
-
       has_active_flag: activeFlagIds.has(
         String(row.wo_id ?? '').trim(),
       ),
@@ -280,6 +276,9 @@ export default function DepartmentDashboard() {
          * Standardized chart grid:
          *
          * Status | Priority | Flow to Next Dept | Incoming WOs
+         *
+         * This grid stays visible and unchanged in fullscreen mode. Only the
+         * work-order table below receives fullscreen auto-scroll behavior.
          */}
         <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {isLoading ? (
@@ -389,7 +388,16 @@ export default function DepartmentDashboard() {
             </span>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto px-3 pb-1">
+          <div
+            className={`
+              min-h-0 flex-1 px-3 pb-1
+              ${
+                db.isFullscreen
+                  ? 'flex flex-col overflow-hidden'
+                  : 'overflow-auto'
+              }
+            `}
+          >
             {isLoading && (
               <div className="pt-4">
                 <LoadingSkeleton type="table" />
@@ -425,6 +433,9 @@ export default function DepartmentDashboard() {
                     handleRowSelect
                   }
                   searchText=""
+                  isFullscreen={
+                    db.isFullscreen
+                  }
                 />
               )}
           </div>

@@ -2,6 +2,7 @@ import {
   Fragment,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import {
@@ -20,6 +21,16 @@ import {
 
 const ROWS_OPTIONS = [10, 25, 50]
 const TABLE_COLUMN_COUNT = 13
+
+/*
+ * Fullscreen auto-scroll settings.
+ *
+ * 18 pixels per second is intentionally slow enough for a dashboard display.
+ * The short delay keeps the first rows visible before movement begins.
+ */
+const AUTO_SCROLL_PIXELS_PER_SECOND = 18
+const AUTO_SCROLL_START_DELAY_MS = 1500
+const MAX_ANIMATION_FRAME_GAP_MS = 100
 
 /*
  * Fields that can be sorted by clicking their table headers.
@@ -412,6 +423,7 @@ export default function WorkOrderTable({
   selectedWoIds = new Set(),
   onRowSelect = () => {},
   searchText = '',
+  isFullscreen = false,
 }) {
   const [sortField, setSortField] =
     useState('wo_ageing_days')
@@ -426,6 +438,8 @@ export default function WorkOrderTable({
 
   const [expandedWoId, setExpandedWoId] =
     useState(null)
+
+  const tableViewportRef = useRef(null)
 
   const safeData = useMemo(
     () =>
@@ -528,6 +542,16 @@ export default function WorkOrderTable({
   }, [flagMode])
 
   /*
+   * Fullscreen always begins in auto-scroll-ready mode, even if a row was
+   * expanded immediately before the user entered fullscreen.
+   */
+  useEffect(() => {
+    if (isFullscreen) {
+      setExpandedWoId(null)
+    }
+  }, [isFullscreen])
+
+  /*
    * Close the expanded row if it is no longer present after a refresh
    * or search operation.
    */
@@ -555,6 +579,14 @@ export default function WorkOrderTable({
     pageStart + perPage,
   )
 
+  /*
+   * Normal mode uses the existing page slice. Fullscreen mode renders every
+   * sorted/filtered row so the table can scroll continuously to the last entry.
+   */
+  const displayedRows = isFullscreen
+    ? sorted
+    : pageData
+
   const showingStart =
     sorted.length === 0
       ? 0
@@ -564,6 +596,159 @@ export default function WorkOrderTable({
     pageStart + perPage,
     sorted.length,
   )
+
+  /*
+   * Start at the first row whenever fullscreen mode, sorting, or searching
+   * changes. Exiting fullscreen also resets the normal table viewport.
+   */
+  useEffect(() => {
+    const viewport = tableViewportRef.current
+
+    if (!viewport) {
+      return
+    }
+
+    viewport.scrollTop = 0
+  }, [
+    isFullscreen,
+    searchText,
+    sortDir,
+    sortField,
+  ])
+
+  /*
+   * Auto-scroll only the table viewport while the dashboard is fullscreen.
+   *
+   * It deliberately pauses while a row is expanded or while flag-selection
+   * mode is active, preventing rows from moving during an interaction. The
+   * animation stops with the final row visible; it does not jump back to the
+   * beginning.
+   */
+  useEffect(() => {
+    const viewport = tableViewportRef.current
+
+    if (
+      !isFullscreen ||
+      flagMode ||
+      expandedWoId ||
+      displayedRows.length === 0 ||
+      !viewport
+    ) {
+      return undefined
+    }
+
+    let animationFrameId = null
+    let previousTimestamp = null
+    let intendedScrollTop =
+      viewport.scrollTop
+    let delayRemaining =
+      AUTO_SCROLL_START_DELAY_MS
+
+    const scrollFrame = (timestamp) => {
+      if (previousTimestamp === null) {
+        previousTimestamp = timestamp
+        animationFrameId =
+          window.requestAnimationFrame(
+            scrollFrame,
+          )
+        return
+      }
+
+      const elapsedMilliseconds = Math.min(
+        timestamp - previousTimestamp,
+        MAX_ANIMATION_FRAME_GAP_MS,
+      )
+
+      previousTimestamp = timestamp
+
+      if (delayRemaining > 0) {
+        delayRemaining -= elapsedMilliseconds
+        animationFrameId =
+          window.requestAnimationFrame(
+            scrollFrame,
+          )
+        return
+      }
+
+      const maximumScrollTop = Math.max(
+        0,
+        viewport.scrollHeight -
+          viewport.clientHeight,
+      )
+
+      /*
+       * No scrolling is needed when all rows fit inside the viewport.
+       */
+      if (maximumScrollTop <= 0) {
+        return
+      }
+
+      /*
+       * Keep fractional movement in JavaScript so scrolling remains smooth
+       * even on a browser that rounds the DOM scrollTop value. A meaningful
+       * manual scroll is respected and becomes the new starting position.
+       */
+      if (
+        Math.abs(
+          viewport.scrollTop -
+            intendedScrollTop,
+        ) > 2
+      ) {
+        intendedScrollTop =
+          viewport.scrollTop
+      }
+
+      /*
+       * Stop with the last entry visible instead of looping or jumping.
+       */
+      if (
+        intendedScrollTop >=
+        maximumScrollTop - 1
+      ) {
+        viewport.scrollTop =
+          maximumScrollTop
+        return
+      }
+
+      const movement =
+        (AUTO_SCROLL_PIXELS_PER_SECOND *
+          elapsedMilliseconds) /
+        1000
+
+      intendedScrollTop = Math.min(
+        maximumScrollTop,
+        intendedScrollTop + movement,
+      )
+
+      viewport.scrollTop = intendedScrollTop
+
+      animationFrameId =
+        window.requestAnimationFrame(
+          scrollFrame,
+        )
+    }
+
+    animationFrameId =
+      window.requestAnimationFrame(
+        scrollFrame,
+      )
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(
+          animationFrameId,
+        )
+      }
+    }
+  }, [
+    displayedRows.length,
+    expandedWoId,
+    flagMode,
+    isFullscreen,
+    searchText,
+    sortDir,
+    sortField,
+  ])
 
   const handleSort = (field) => {
     if (!SORTABLE_FIELDS.has(field)) {
@@ -800,7 +985,6 @@ export default function WorkOrderTable({
             `}
           >
             {children}
-
             <SortIcon field={field} />
           </button>
         ) : (
@@ -811,13 +995,24 @@ export default function WorkOrderTable({
   }
 
   return (
-    <div className="min-w-0">
+    <div
+      className={
+        isFullscreen
+          ? 'flex min-h-0 min-w-0 flex-1 flex-col'
+          : 'min-w-0'
+      }
+    >
       <div
-        className="
-          overflow-x-auto
+        ref={tableViewportRef}
+        className={`
           rounded-xl
           border border-slate-200
-        "
+          ${
+            isFullscreen
+              ? 'min-h-0 flex-1 overflow-auto'
+              : 'overflow-x-auto'
+          }
+        `}
       >
         <table className="w-full text-sm">
           <thead
@@ -893,12 +1088,10 @@ export default function WorkOrderTable({
           </thead>
 
           <tbody>
-            {pageData.length === 0 ? (
+            {displayedRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={
-                    TABLE_COLUMN_COUNT
-                  }
+                  colSpan={TABLE_COLUMN_COUNT}
                   className="
                     px-4 py-10
                     text-center text-sm
@@ -909,12 +1102,11 @@ export default function WorkOrderTable({
                 </td>
               </tr>
             ) : (
-              pageData.map(
+              displayedRows.map(
                 (row, rowIndex) => {
-                  const woId =
-                    normalizeWoId(
-                      row?.wo_id,
-                    )
+                  const woId = normalizeWoId(
+                    row?.wo_id,
+                  )
 
                   const rowIsFlagged =
                     isActiveFlag(
@@ -928,7 +1120,11 @@ export default function WorkOrderTable({
 
                   const rowKey =
                     woId ||
-                    `${page}-${rowIndex}`
+                    `${
+                      isFullscreen
+                        ? 'fullscreen'
+                        : page
+                    }-${rowIndex}`
 
                   return (
                     <Fragment key={rowKey}>
@@ -1187,126 +1383,131 @@ export default function WorkOrderTable({
         </table>
       </div>
 
-      <div
-        className="
-          flex flex-wrap
-          items-center
-          justify-between
-          gap-3 px-1 pt-4
-        "
-      >
-        <div
-          className="
-            flex items-center
-            gap-2 text-xs
-            text-slate-500
-          "
-        >
-          <label htmlFor="work-order-rows-per-page">
-            Rows per page:
-          </label>
-
-          <select
-            id="work-order-rows-per-page"
-            value={perPage}
-            onChange={(event) => {
-              setPerPage(
-                Number(
-                  event.target.value,
-                ),
-              )
-
-              setPage(1)
-            }}
-            className="
-              rounded-lg
-              border border-slate-200
-              px-2 py-1
-              text-xs
-            "
-          >
-            {ROWS_OPTIONS.map(
-              (option) => (
-                <option
-                  key={option}
-                  value={option}
-                >
-                  {option}
-                </option>
-              ),
-            )}
-          </select>
-        </div>
-
+      {/*
+       * Pagination remains exactly for normal mode and is removed only while
+       * the dashboard is fullscreen.
+       */}
+      {!isFullscreen && (
         <div
           className="
             flex flex-wrap
             items-center
-            gap-3
+            justify-between
+            gap-3 px-1 pt-4
           "
         >
-          <span className="text-xs text-slate-500">
-            Showing {showingStart}–
-            {showingEnd} of{' '}
-            {sorted.length}
-          </span>
-
-          <button
-            type="button"
-            onClick={() =>
-              setPage(
-                (currentPage) =>
-                  Math.max(
-                    1,
-                    currentPage - 1,
-                  ),
-              )
-            }
-            disabled={page <= 1}
+          <div
             className="
-              rounded-lg
-              border border-slate-200
-              px-3 py-1.5
-              text-xs
-              transition-colors
-              hover:bg-slate-50
-              disabled:cursor-not-allowed
-              disabled:opacity-40
+              flex items-center
+              gap-2 text-xs
+              text-slate-500
             "
           >
-            Previous
-          </button>
+            <label htmlFor="work-order-rows-per-page">
+              Rows per page:
+            </label>
 
-          <button
-            type="button"
-            onClick={() =>
-              setPage(
-                (currentPage) =>
-                  Math.min(
-                    totalPages,
-                    currentPage + 1,
+            <select
+              id="work-order-rows-per-page"
+              value={perPage}
+              onChange={(event) => {
+                setPerPage(
+                  Number(
+                    event.target.value,
                   ),
-              )
-            }
-            disabled={
-              page >= totalPages ||
-              sorted.length === 0
-            }
+                )
+                setPage(1)
+              }}
+              className="
+                rounded-lg
+                border border-slate-200
+                px-2 py-1
+                text-xs
+              "
+            >
+              {ROWS_OPTIONS.map(
+                (option) => (
+                  <option
+                    key={option}
+                    value={option}
+                  >
+                    {option}
+                  </option>
+                ),
+              )}
+            </select>
+          </div>
+
+          <div
             className="
-              rounded-lg
-              border border-slate-200
-              px-3 py-1.5
-              text-xs
-              transition-colors
-              hover:bg-slate-50
-              disabled:cursor-not-allowed
-              disabled:opacity-40
+              flex flex-wrap
+              items-center
+              gap-3
             "
           >
-            Next
-          </button>
+            <span className="text-xs text-slate-500">
+              Showing {showingStart}–
+              {showingEnd} of{' '}
+              {sorted.length}
+            </span>
+
+            <button
+              type="button"
+              onClick={() =>
+                setPage(
+                  (currentPage) =>
+                    Math.max(
+                      1,
+                      currentPage - 1,
+                    ),
+                )
+              }
+              disabled={page <= 1}
+              className="
+                rounded-lg
+                border border-slate-200
+                px-3 py-1.5
+                text-xs
+                transition-colors
+                hover:bg-slate-50
+                disabled:cursor-not-allowed
+                disabled:opacity-40
+              "
+            >
+              Previous
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setPage(
+                  (currentPage) =>
+                    Math.min(
+                      totalPages,
+                      currentPage + 1,
+                    ),
+                )
+              }
+              disabled={
+                page >= totalPages ||
+                sorted.length === 0
+              }
+              className="
+                rounded-lg
+                border border-slate-200
+                px-3 py-1.5
+                text-xs
+                transition-colors
+                hover:bg-slate-50
+                disabled:cursor-not-allowed
+                disabled:opacity-40
+              "
+            >
+              Next
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
