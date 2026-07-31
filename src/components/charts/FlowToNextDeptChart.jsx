@@ -4,92 +4,100 @@ import StandardPriorityBarChart
   from './StandardPriorityBarChart'
 
 import {
-  STATUS_DISPLAY,
-} from '../../utils/constants'
-
-import {
   addPriorityStackMeta,
   normalizePriorityKey,
 } from '../../utils/priorityChart'
 
-const STATUS_ORDER = [
-  'New',
-  'Ongoing',
-  'Overdue',
-  'Completed',
-]
-
-function normalizeStatus(value) {
-  const normalized = String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
-
-  const statusMap = {
-    new: 'New',
-    notstarted: 'New',
-
-    ongoing: 'Ongoing',
-    inprocess: 'Ongoing',
-    inprogress: 'Ongoing',
-
-    overdue: 'Overdue',
-
-    completed: 'Completed',
-    complete: 'Completed',
-    done: 'Completed',
-  }
-
-  return statusMap[normalized] || 'New'
-}
-
-export default function StatusBarChart({
-  workOrders = [],
+/*
+ * Build one stacked bar per next department.
+ *
+ * Each bar is divided into:
+ * - Low
+ * - Medium
+ * - High
+ */
+export default function FlowToNextDeptChart({
+  data = [],
 }) {
   const chartData = useMemo(() => {
-    const counts = Object.fromEntries(
-      STATUS_ORDER.map(
-        (status) => [
-          status,
+    const departmentCounts = new Map()
+
+    const safeRows = Array.isArray(data)
+      ? data
+      : []
+
+    for (const workOrder of safeRows) {
+      const nextDepartment = String(
+        workOrder?.next_dept ?? '',
+      ).trim()
+
+      // Rows without a next department cannot participate in this chart.
+      if (!nextDepartment) {
+        continue
+      }
+
+      if (
+        !departmentCounts.has(
+          nextDepartment,
+        )
+      ) {
+        departmentCounts.set(
+          nextDepartment,
           {
             low: 0,
             medium: 0,
             high: 0,
           },
-        ],
-      ),
-    )
-
-    for (const workOrder of workOrders) {
-      const status = normalizeStatus(
-        workOrder.status,
-      )
+        )
+      }
 
       const priorityKey =
         normalizePriorityKey(
-          workOrder.priority,
+          workOrder?.priority,
         )
 
-      counts[status][priorityKey] += 1
+      const priorityCounts =
+        departmentCounts.get(
+          nextDepartment,
+        )
+
+      priorityCounts[priorityKey] += 1
     }
 
-    return STATUS_ORDER.map(
-      (status) =>
-        addPriorityStackMeta({
-          status,
-          name:
-            STATUS_DISPLAY[status] ||
-            status,
-          ...counts[status],
-        }),
+    /*
+     * StandardPriorityBarChart expects:
+     * - low
+     * - medium
+     * - high
+     * - total
+     * - topKey
+     *
+     * addPriorityStackMeta adds total and topKey.
+     */
+    return Array.from(
+      departmentCounts.entries(),
     )
-  }, [workOrders])
+      .map(
+        ([
+          nextDepartment,
+          priorityCounts,
+        ]) =>
+          addPriorityStackMeta({
+            name: nextDepartment,
+            ...priorityCounts,
+          }),
+      )
+      .sort(
+        (first, second) =>
+          second.total - first.total,
+      )
+  }, [data])
 
   return (
     <StandardPriorityBarChart
       data={chartData}
       categoryKey="name"
-      emptyMessage="No status data available"
+      emptyMessage="No next department data available"
       yAxisLabel="WO count"
     />
   )
