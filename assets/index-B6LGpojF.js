@@ -113,7 +113,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
             `,children:[t,(0,import_jsx_runtime.jsx)(U,{field:e})]}):t})};return(0,import_jsx_runtime.jsxs)(`div`,{className:u?`flex min-h-0 min-w-0 flex-1 flex-col`:`min-w-0`,children:[(0,import_jsx_runtime.jsx)(`div`,{ref:C,className:`
           rounded-xl
           border border-slate-200
-          ${u?`min-h-0 flex-1 overflow-auto`:`overflow-x-auto`}
+          ${u?`fullscreen-table-scroll min-h-0 flex-1 overflow-auto`:`overflow-x-auto`}
         `,children:(0,import_jsx_runtime.jsxs)(`table`,{className:`w-full text-sm`,children:[(0,import_jsx_runtime.jsx)(`thead`,{className:`\r
               sticky top-0 z-10\r
               bg-slate-50\r
