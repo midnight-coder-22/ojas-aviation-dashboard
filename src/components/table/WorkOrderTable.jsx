@@ -428,6 +428,7 @@ export default function WorkOrderTable({
   onRowSelect = () => {},
   searchText = '',
   isFullscreen = false,
+  resetKey = '',
 }) {
   const [sortField, setSortField] =
     useState('wo_ageing_days')
@@ -538,6 +539,13 @@ export default function WorkOrderTable({
     setPage(1)
   }, [searchText])
 
+  useEffect(() => {
+    setPage(1)
+    setExpandedWoId(null)
+
+    const viewport = tableViewportRef.current
+    if (viewport) viewport.scrollTop = 0
+  }, [resetKey])
   /*
    * Expanded-row mode and flag-selection mode are mutually exclusive.
    */

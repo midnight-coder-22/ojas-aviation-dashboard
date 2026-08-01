@@ -3,23 +3,22 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react'
 
-export const DashboardContext = createContext(null)
+import { EMPTY_DASHBOARD_FILTERS } from '../utils/dashboardFilters'
 
+export const DashboardContext = createContext(null)
 export const useDashboard = () => useContext(DashboardContext)
 
 const FULLSCREEN_TARGET_ID = 'department-dashboard-fullscreen'
 
 function isActiveFlag(value) {
-  if (value === true || value === 1) {
-    return true
-  }
+  if (value === true || value === 1) return true
 
   if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase()
-
     return normalized === 'true' || normalized === '1'
   }
 
@@ -42,33 +41,43 @@ export default function DashboardProvider({ children }) {
   const [currentDept, setCurrentDept] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [dashboardFilters, setDashboardFilters] = useState({
+    ...EMPTY_DASHBOARD_FILTERS,
+  })
 
-  /*
-   * Synchronize React state with the browser's actual fullscreen state.
-   *
-   * This is important because the user can leave fullscreen by:
-   * - pressing Escape
-   * - using the browser's fullscreen controls
-   * - navigating away
-   */
+  const hasActiveDashboardFilters = useMemo(
+    () => Object.values(dashboardFilters).some(Boolean),
+    [dashboardFilters],
+  )
+
+  const setDashboardFilter = useCallback((key, value) => {
+    setDashboardFilters((current) => ({
+      ...current,
+      [key]: value || null,
+    }))
+  }, [])
+
+  const setDashboardFilterGroup = useCallback((updates) => {
+    setDashboardFilters((current) => ({
+      ...current,
+      ...updates,
+    }))
+  }, [])
+
+  const resetDashboardFilters = useCallback(() => {
+    setDashboardFilters({ ...EMPTY_DASHBOARD_FILTERS })
+  }, [])
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(Boolean(getFullscreenElement()))
 
-      /*
-       * Allow responsive chart libraries to recalculate their dimensions
-       * after the viewport changes.
-       */
       window.requestAnimationFrame(() => {
         window.dispatchEvent(new Event('resize'))
       })
     }
 
-    document.addEventListener(
-      'fullscreenchange',
-      handleFullscreenChange,
-    )
-
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
     document.addEventListener(
       'webkitfullscreenchange',
       handleFullscreenChange,
@@ -81,7 +90,6 @@ export default function DashboardProvider({ children }) {
         'fullscreenchange',
         handleFullscreenChange,
       )
-
       document.removeEventListener(
         'webkitfullscreenchange',
         handleFullscreenChange,
@@ -98,7 +106,6 @@ export default function DashboardProvider({ children }) {
       console.error(
         `Fullscreen target #${FULLSCREEN_TARGET_ID} was not found.`,
       )
-
       return false
     }
 
@@ -108,9 +115,6 @@ export default function DashboardProvider({ children }) {
           navigationUI: 'hide',
         })
       } else if (fullscreenTarget.webkitRequestFullscreen) {
-        /*
-         * Safari fallback.
-         */
         fullscreenTarget.webkitRequestFullscreen()
       } else {
         throw new Error(
@@ -121,7 +125,6 @@ export default function DashboardProvider({ children }) {
       return true
     } catch (error) {
       console.error('Could not enter fullscreen mode:', error)
-
       return false
     }
   }, [])
@@ -143,23 +146,15 @@ export default function DashboardProvider({ children }) {
       return true
     } catch (error) {
       console.error('Could not exit fullscreen mode:', error)
-
       return false
     }
   }, [])
 
   const toggleFullscreen = useCallback(async () => {
-    if (getFullscreenElement()) {
-      return exitFullscreen()
-    }
-
+    if (getFullscreenElement()) return exitFullscreen()
     return enterFullscreen()
   }, [enterFullscreen, exitFullscreen])
 
-  /*
-   * Add Flag mode:
-   * Existing active flags are selected and locked.
-   */
   const startAddMode = () => {
     const existing = new Set(
       workOrders
@@ -172,10 +167,6 @@ export default function DashboardProvider({ children }) {
     setFlagMode('add')
   }
 
-  /*
-   * Resolve Flag mode:
-   * Start with all active flags selected.
-   */
   const startResolveMode = () => {
     const flagged = new Set(
       workOrders
@@ -191,11 +182,8 @@ export default function DashboardProvider({ children }) {
     setSelectedWoIds((previous) => {
       const next = new Set(previous)
 
-      if (next.has(woId)) {
-        next.delete(woId)
-      } else {
-        next.add(woId)
-      }
+      if (next.has(woId)) next.delete(woId)
+      else next.add(woId)
 
       return next
     })
@@ -207,35 +195,34 @@ export default function DashboardProvider({ children }) {
     setPreExistingIds(new Set())
   }
 
+  const value = {
+    flagMode,
+    setFlagMode,
+    selectedWoIds,
+    preExistingIds,
+    workOrders,
+    setWorkOrders,
+    currentDept,
+    setCurrentDept,
+    isRefreshing,
+    setIsRefreshing,
+    isFullscreen,
+    enterFullscreen,
+    exitFullscreen,
+    toggleFullscreen,
+    dashboardFilters,
+    setDashboardFilter,
+    setDashboardFilterGroup,
+    resetDashboardFilters,
+    hasActiveDashboardFilters,
+    startAddMode,
+    startResolveMode,
+    toggleWoId,
+    cancelFlag,
+  }
+
   return (
-    <DashboardContext.Provider
-      value={{
-        flagMode,
-        setFlagMode,
-
-        selectedWoIds,
-        preExistingIds,
-
-        workOrders,
-        setWorkOrders,
-
-        currentDept,
-        setCurrentDept,
-
-        isRefreshing,
-        setIsRefreshing,
-
-        isFullscreen,
-        enterFullscreen,
-        exitFullscreen,
-        toggleFullscreen,
-
-        startAddMode,
-        startResolveMode,
-        toggleWoId,
-        cancelFlag,
-      }}
-    >
+    <DashboardContext.Provider value={value}>
       {children}
     </DashboardContext.Provider>
   )

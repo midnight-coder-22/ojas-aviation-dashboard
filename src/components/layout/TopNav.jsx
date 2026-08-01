@@ -13,6 +13,7 @@ import {
   X,
   Database,
   Plane,
+  FilterX,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useDashboard } from '../../context/DashboardContext'
@@ -53,6 +54,10 @@ export default function TopNav() {
   return Promise.all([
     queryClient.invalidateQueries({
       queryKey: ['dept-data', department],
+    }),
+
+    queryClient.invalidateQueries({
+    queryKey: ['incoming-flow', department],
     }),
 
     queryClient.invalidateQueries({
@@ -380,6 +385,17 @@ export default function TopNav() {
               ))}
           </div>
         )}
+        
+{isOnDeptDashboard && db.hasActiveDashboardFilters && (
+  <button
+    type="button"
+    onClick={db.resetDashboardFilters}
+    className={`${neutralActionClass} ml-2`}
+  >
+    <FilterX size={16} />
+    Reset Filters
+  </button>
+)}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-3">
           {isOnDeptDashboard && (

@@ -1,9 +1,3 @@
-/**
- * Construct an explicit SVG path instead of relying on Recharts Rectangle
- * radius handling.
- *
- * This gives the upper visible segment reliably smooth upper corners.
- */
 function createSegmentPath({
   x,
   y,
@@ -14,7 +8,6 @@ function createSegmentPath({
 }) {
   const right = x + width
   const bottom = y + height
-
   const safeRadius = roundTop
     ? Math.min(
         Math.max(Number(radius) || 0, 0),
@@ -45,13 +38,6 @@ function createSegmentPath({
   ].join(' ')
 }
 
-/**
- * Shared renderer for each priority section of a stacked bar.
- *
- * - Upper visible segment has smooth rounded corners.
- * - Every non-zero section displays its value beside the bar.
- * - The complete bar total is displayed above the stack.
- */
 export default function LabeledRoundedStackSegment({
   x,
   y,
@@ -62,15 +48,17 @@ export default function LabeledRoundedStackSegment({
   dataKey,
   radius = 7,
   showTotal = true,
+  interactive = false,
+  isActive = false,
+  isDimmed = false,
+  onClick,
+  ariaLabel,
 }) {
   const numericX = Number(x)
   const numericY = Number(y)
   const numericWidth = Number(width)
   const numericHeight = Number(height)
-
-  const value = Number(
-    payload?.[dataKey] ?? 0,
-  )
+  const value = Number(payload?.[dataKey] ?? 0)
 
   if (
     ![
@@ -87,19 +75,10 @@ export default function LabeledRoundedStackSegment({
     return null
   }
 
-  const isTopSegment =
-    payload?.topKey === dataKey
-
-  const total = Number(
-    payload?.total ?? value,
-  )
-
-  const sectionLabelX =
-    numericX + numericWidth + 5
-
-  const sectionLabelY =
-    numericY + numericHeight / 2
-
+  const isTopSegment = payload?.topKey === dataKey
+  const total = Number(payload?.total ?? value)
+  const sectionLabelX = numericX + numericWidth + 5
+  const sectionLabelY = numericY + numericHeight / 2
   const path = createSegmentPath({
     x: numericX,
     y: numericY,
@@ -109,16 +88,33 @@ export default function LabeledRoundedStackSegment({
     radius,
   })
 
+  const handleKeyDown = (event) => {
+    if (!interactive) return
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onClick?.()
+    }
+  }
+
   return (
-    <g>
+    <g
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? ariaLabel : undefined}
+      onClick={interactive ? onClick : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
+      style={{ cursor: interactive ? 'pointer' : 'default' }}
+      opacity={isDimmed ? 0.28 : 1}
+    >
       <path
         d={path}
         fill={fill}
-        stroke="none"
+        stroke={isActive ? '#0F172A' : 'none'}
+        strokeWidth={isActive ? 2 : 0}
         shapeRendering="geometricPrecision"
       />
 
-      {/* Number beside this priority section */}
       <text
         x={sectionLabelX}
         y={sectionLabelY}
@@ -136,17 +132,10 @@ export default function LabeledRoundedStackSegment({
         {value}
       </text>
 
-      {/* Complete total above the full stacked bar */}
       {showTotal && isTopSegment && (
         <text
-          x={
-            numericX +
-            numericWidth / 2
-          }
-          y={Math.max(
-            10,
-            numericY - 6,
-          )}
+          x={numericX + numericWidth / 2}
+          y={Math.max(10, numericY - 6)}
           textAnchor="middle"
           fill="#334155"
           stroke="#FFFFFF"

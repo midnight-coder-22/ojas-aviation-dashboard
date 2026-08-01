@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Minimize2 } from 'lucide-react'
+import { FilterX, Minimize2 } from 'lucide-react'
 
 import AppLayout from '../components/layout/AppLayout'
 import LoadingSkeleton from '../components/ui/LoadingSkeleton'
@@ -11,59 +11,23 @@ import StatusBarChart from '../components/charts/StatusBarChart'
 import PriorityPieChart from '../components/charts/PriorityPieChart'
 import FlowToNextDeptChart from '../components/charts/FlowToNextDeptChart'
 import IncomingFlowChart from '../components/charts/IncomingFlowChart'
-
+import IncomingFocusDashboard from '../components/dashboard/IncomingFocusDashboard'
 import WorkOrderTable from '../components/table/WorkOrderTable'
 import { useDeptData } from '../hooks/useDeptData'
 import { useDeptFlags } from '../hooks/useDeptFlags'
-import { useSummary } from '../hooks/useSummary'
 import { useIncomingFlow } from '../hooks/useIncomingFlow'
-
 import { useDashboard } from '../context/DashboardContext'
-
 import { slugToDept } from '../utils/constants'
 import { formatDeptHeading } from '../utils/formatters'
+import {
+  buildPriorityBreakdown,
+  filterWorkOrders,
+  toggleFilterValue,
+} from '../utils/dashboardFilters'
 
-/*
- * Stable fallback arrays prevent a new empty-array reference from being
- * created on every render. This keeps the useMemo dependency lists stable.
- */
 const EMPTY_WORK_ORDERS = []
 const EMPTY_FLAGS = []
 
-/*
- * Build a usable priority breakdown even while the summary API is loading or
- * when it temporarily fails. The summary response remains the preferred source.
- */
-function buildPriorityBreakdown(workOrders) {
-  return workOrders.reduce(
-    (breakdown, workOrder) => {
-      const normalizedPriority = String(
-        workOrder.priority ?? 'Low',
-      )
-        .trim()
-        .toLowerCase()
-
-      if (normalizedPriority === 'high') {
-        breakdown.High += 1
-      } else if (normalizedPriority === 'medium') {
-        breakdown.Medium += 1
-      } else {
-        breakdown.Low += 1
-      }
-
-      return breakdown
-    },
-    {
-      Low: 0,
-      Medium: 0,
-      High: 0,
-    },
-  )
-}
-
-/*
- * Standard loading card matching the final height and shape of ChartCard.
- */
 function ChartLoadingCard() {
   return (
     <div className="h-[290px] animate-pulse rounded-xl border border-slate-200 bg-slate-200" />
@@ -73,49 +37,31 @@ function ChartLoadingCard() {
 export default function DepartmentDashboard() {
   const { dept } = useParams()
   const deptName = slugToDept(dept)
-
   const db = useDashboard()
   const deptQuery = useDeptData(deptName)
-  const summaryQuery = useSummary(deptName)
   const flagsQuery = useDeptFlags(deptName)
   const incomingFlowQuery = useIncomingFlow(deptName)
+  const [incomingPopup, setIncomingPopup] = useState({
+    isOpen: false,
+    sourceDepartment: null,
+    initialPriority: null,
+  })
 
-  const rawWorkOrders =
-    deptQuery.data?.data ?? EMPTY_WORK_ORDERS
-
-  const summary = summaryQuery.data
+  const rawWorkOrders = deptQuery.data?.data ?? EMPTY_WORK_ORDERS
   const incomingFlow = incomingFlowQuery.data
-
-  const recordCount =
+  const unfilteredRecordCount =
     deptQuery.data?.record_count ?? rawWorkOrders.length
 
-  const totalWorkOrders =
-    summary?.total_wos ?? recordCount
-
-  /*
-   * Build a lookup containing every WO that currently has an active flag.
-   * GET /api/flags/{department} returns the active flag records.
-   */
   const activeFlagIds = useMemo(() => {
     const flags = flagsQuery.data ?? EMPTY_FLAGS
 
     return new Set(
-      flags.map((flag) =>
-        String(flag.wo_id ?? '').trim(),
-      ),
+      flags.map((flag) => String(flag.wo_id ?? '').trim()),
     )
   }, [flagsQuery.data])
 
-  /*
-   * Once the dedicated flags API succeeds, it becomes the live source of
-   * truth for has_active_flag.
-   *
-   * Until then, preserve the value supplied by the department dashboard API.
-   */
   const workOrders = useMemo(() => {
-    if (!flagsQuery.isSuccess) {
-      return rawWorkOrders
-    }
+    if (!flagsQuery.isSuccess) return rawWorkOrders
 
     return rawWorkOrders.map((row) => ({
       ...row,
@@ -123,134 +69,134 @@ export default function DepartmentDashboard() {
         String(row.wo_id ?? '').trim(),
       ),
     }))
-  }, [
-    rawWorkOrders,
-    activeFlagIds,
-    flagsQuery.isSuccess,
-  ])
+  }, [activeFlagIds, flagsQuery.isSuccess, rawWorkOrders])
 
-  /*
-   * The summary API is preferred, but this local fallback keeps the Priority
-   * visual usable if the summary request is still loading or fails.
-   */
-  const fallbackPriorityBreakdown = useMemo(
-    () => buildPriorityBreakdown(workOrders),
-    [workOrders],
+  const filteredWorkOrders = useMemo(
+    () => filterWorkOrders(workOrders, db.dashboardFilters),
+    [db.dashboardFilters, workOrders],
   )
 
-  const priorityBreakdown =
-    summary?.priority_breakdown ??
-    fallbackPriorityBreakdown
-
   /*
-   * Count only work orders that actually have a next department.
-   * This value appears in the Flow to Next Dept metric card.
+   * Each chart ignores only its own dimension while respecting the other
+   * active filters. This preserves the other available categories and makes
+   * replacing a filter possible without first pressing Reset Filters.
    */
+  const statusChartRows = useMemo(
+    () => filterWorkOrders(workOrders, db.dashboardFilters, 'status'),
+    [db.dashboardFilters, workOrders],
+  )
+
+  const priorityChartRows = useMemo(
+    () => filterWorkOrders(workOrders, db.dashboardFilters, 'priority'),
+    [db.dashboardFilters, workOrders],
+  )
+
+  const flowChartRows = useMemo(
+    () => filterWorkOrders(workOrders, db.dashboardFilters, 'nextDept'),
+    [db.dashboardFilters, workOrders],
+  )
+
+  const priorityBreakdown = useMemo(
+    () => buildPriorityBreakdown(priorityChartRows),
+    [priorityChartRows],
+  )
+
   const flowingWorkOrders = useMemo(
     () =>
-      workOrders.reduce(
-        (total, workOrder) => {
-          const nextDepartment = String(
-            workOrder.next_dept ?? '',
-          ).trim()
-
-          return total + (nextDepartment ? 1 : 0)
-        },
-        0,
-      ),
-    [workOrders],
+      filteredWorkOrders.reduce((total, workOrder) => {
+        const nextDepartment = String(
+          workOrder.next_dept ?? '',
+        ).trim()
+        return total + (nextDepartment ? 1 : 0)
+      }, 0),
+    [filteredWorkOrders],
   )
 
-  /*
-   * Department data controls the table, Status chart, and Flow chart.
-   * Summary and Incoming WOs are allowed to load independently.
-   */
   const isLoading = deptQuery.isLoading
   const isError = deptQuery.isError
 
-  /*
-   * Tell DashboardContext which department is currently open.
-   *
-   * cancelFlag clears unfinished flag-selection state when the user leaves
-   * the department dashboard.
-   */
   useEffect(() => {
     db.setCurrentDept(deptName)
+    db.resetDashboardFilters()
+    setIncomingPopup({
+      isOpen: false,
+      sourceDepartment: null,
+      initialPriority: null,
+    })
 
     return () => {
       db.setCurrentDept(null)
       db.cancelFlag()
     }
-
-    /*
-     * DashboardContext action functions are intentionally excluded.
-     * Including the complete db object would cause this effect to run whenever
-     * the provider value receives a new object reference.
-     */
+    // Dashboard action functions are stable and intentionally omitted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deptName])
 
-  /*
-   * Keep the merged work-order rows in DashboardContext.
-   *
-   * TopNav uses these rows for:
-   * - notification counts
-   * - Add Flag mode
-   * - Resolve Flag mode
-   */
   useEffect(() => {
     db.setWorkOrders(workOrders)
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workOrders])
 
   const handleRowSelect = (woId) => {
-    const normalizedWoId = String(
-      woId ?? '',
-    ).trim()
-
+    const normalizedWoId = String(woId ?? '').trim()
     const matchingWorkOrder = workOrders.find(
       (workOrder) =>
-        String(
-          workOrder.wo_id ?? '',
-        ).trim() === normalizedWoId,
+        String(workOrder.wo_id ?? '').trim() === normalizedWoId,
     )
-
-    /*
-     * Prefer the ID stored on the matching row so it remains consistent with
-     * the IDs already placed in DashboardContext.
-     */
-    const canonicalWoId =
-      matchingWorkOrder?.wo_id ?? woId
+    const canonicalWoId = matchingWorkOrder?.wo_id ?? woId
 
     if (db.flagMode === 'add') {
-      /*
-       * Existing active flags are locked while the user adds new flags.
-       */
-      if (
-        db.preExistingIds.has(
-          canonicalWoId,
-        )
-      ) {
-        return
-      }
-
+      if (db.preExistingIds.has(canonicalWoId)) return
       db.toggleWoId(canonicalWoId)
       return
     }
 
     if (db.flagMode === 'resolve') {
-      /*
-       * Only rows with active flags may be selected for resolution.
-       */
-      if (
-        !matchingWorkOrder?.has_active_flag
-      ) {
-        return
-      }
-
+      if (!matchingWorkOrder?.has_active_flag) return
       db.toggleWoId(canonicalWoId)
     }
+  }
+
+  const setOneMainFilter = (key, value) => {
+    db.setDashboardFilter(
+      key,
+      toggleFilterValue(db.dashboardFilters[key], value),
+    )
+  }
+
+  const handleStatusSegmentClick = ({ category, priority }) => {
+    const samePair =
+      db.dashboardFilters.status === category &&
+      db.dashboardFilters.priority === priority
+
+    db.setDashboardFilterGroup({
+      status: samePair ? null : category,
+      priority: samePair ? null : priority,
+    })
+  }
+
+  const handleFlowSegmentClick = ({ category, priority }) => {
+    const samePair =
+      db.dashboardFilters.nextDept === category &&
+      db.dashboardFilters.priority === priority
+
+    db.setDashboardFilterGroup({
+      nextDept: samePair ? null : category,
+      priority: samePair ? null : priority,
+    })
+  }
+
+  const openIncomingPopup = (
+    sourceDepartment,
+    initialPriority = null,
+  ) => {
+    if (!sourceDepartment) return
+
+    setIncomingPopup({
+      isOpen: true,
+      sourceDepartment,
+      initialPriority,
+    })
   }
 
   return (
@@ -263,89 +209,81 @@ export default function DepartmentDashboard() {
           ${db.isFullscreen ? 'py-3' : 'pb-2 pt-2'}
         `}
       >
-        {/*
-         * Keep the department heading visible in normal and fullscreen views.
-         */}
         <div className="shrink-0">
           <h1 className="text-xl font-bold leading-tight text-slate-900">
             {formatDeptHeading(deptName)}
           </h1>
         </div>
 
-        {/*
-         * Standardized chart grid:
-         *
-         * Status | Priority | Flow to Next Dept | Incoming WOs
-         *
-         * This grid stays visible and unchanged in fullscreen mode. Only the
-         * work-order table below receives fullscreen auto-scroll behavior.
-         */}
         <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {isLoading ? (
-            Array.from(
-              { length: 3 },
-              (_, index) => (
-                <ChartLoadingCard
-                  key={`primary-chart-loading-${index}`}
-                />
-              ),
-            )
+            Array.from({ length: 3 }, (_, index) => (
+              <ChartLoadingCard
+                key={`primary-chart-loading-${index}`}
+              />
+            ))
           ) : (
             <>
-              {/* Status */}
               <ChartCard
                 title="Status"
                 subtitle="Work orders by status"
-                metricValue={totalWorkOrders}
-                metricLabel="Total WOs"
+                metricValue={filteredWorkOrders.length}
+                metricLabel="Filtered WOs"
                 showPriorityLegend
               >
                 <StatusBarChart
-                  workOrders={workOrders}
+                  workOrders={statusChartRows}
+                  activeStatus={db.dashboardFilters.status}
+                  activePriority={db.dashboardFilters.priority}
+                  onStatusClick={(status) =>
+                    setOneMainFilter('status', status)
+                  }
+                  onSegmentClick={handleStatusSegmentClick}
                 />
               </ChartCard>
 
-              {/* Priority */}
               <ChartCard
                 title="Priority"
                 subtitle="Overall priority breakdown"
-                metricValue={totalWorkOrders}
-                metricLabel="Total WOs"
+                metricValue={filteredWorkOrders.length}
+                metricLabel="Filtered WOs"
               >
                 <PriorityPieChart
-                  priorityBreakdown={
-                    priorityBreakdown
+                  priorityBreakdown={priorityBreakdown}
+                  activePriority={db.dashboardFilters.priority}
+                  onPriorityClick={(priority) =>
+                    setOneMainFilter('priority', priority)
                   }
                 />
               </ChartCard>
 
-              {/* Flow to next department */}
               <ChartCard
                 title="Flow to Next Dept"
                 subtitle="Next department by priority"
-                metricValue={
-                  flowingWorkOrders
-                }
+                metricValue={flowingWorkOrders}
                 metricLabel="Flowing"
                 showPriorityLegend
               >
                 <FlowToNextDeptChart
-                  data={workOrders}
+                  data={flowChartRows}
+                  activeDepartment={db.dashboardFilters.nextDept}
+                  activePriority={db.dashboardFilters.priority}
+                  onDepartmentClick={(department) =>
+                    setOneMainFilter('nextDept', department)
+                  }
+                  onSegmentClick={handleFlowSegmentClick}
                 />
               </ChartCard>
             </>
           )}
 
-          {/* Incoming work orders load independently from department data. */}
           {incomingFlowQuery.isLoading ? (
             <ChartLoadingCard />
           ) : (
             <ChartCard
               title="Incoming WOs"
               subtitle={`Incoming to ${deptName}`}
-              metricValue={
-                incomingFlow?.total_wos ?? 0
-              }
+              metricValue={incomingFlow?.total_wos ?? 0}
               metricLabel="Incoming"
               showPriorityLegend
             >
@@ -354,12 +292,9 @@ export default function DepartmentDashboard() {
                   <p className="text-sm text-slate-500">
                     Incoming-flow data could not be loaded.
                   </p>
-
                   <button
                     type="button"
-                    onClick={() =>
-                      incomingFlowQuery.refetch()
-                    }
+                    onClick={() => incomingFlowQuery.refetch()}
                     className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                   >
                     Retry
@@ -367,8 +302,22 @@ export default function DepartmentDashboard() {
                 </div>
               ) : (
                 <IncomingFlowChart
-                  rows={
-                    incomingFlow?.data ?? []
+                  rows={incomingFlow?.data ?? []}
+                  activeSourceDepartment={
+                    incomingPopup.isOpen
+                      ? incomingPopup.sourceDepartment
+                      : null
+                  }
+                  activePriority={
+                    incomingPopup.isOpen
+                      ? incomingPopup.initialPriority
+                      : null
+                  }
+                  onSourceDepartmentClick={(sourceDepartment) =>
+                    openIncomingPopup(sourceDepartment)
+                  }
+                  onSegmentClick={({ category, priority }) =>
+                    openIncomingPopup(category, priority)
                   }
                 />
               )}
@@ -376,15 +325,17 @@ export default function DepartmentDashboard() {
           )}
         </div>
 
-        {/* Work-order table */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 py-2">
             <span className="text-sm font-bold text-slate-800">
               Work Orders
             </span>
-
             <span className="text-xs text-slate-400">
-              {recordCount} records
+              {filteredWorkOrders.length}
+              {db.hasActiveDashboardFilters
+                ? ` of ${unfilteredRecordCount}`
+                : ''}{' '}
+              records
             </span>
           </div>
 
@@ -392,7 +343,7 @@ export default function DepartmentDashboard() {
             className={`
               min-h-0 flex-1 px-3 pb-1
               ${
-                db.isFullscreen
+                db.isFullscreen && !incomingPopup.isOpen
                   ? 'flex flex-col overflow-hidden'
                   : 'overflow-auto'
               }
@@ -406,60 +357,68 @@ export default function DepartmentDashboard() {
 
             {isError && (
               <div className="pt-4">
-                <ErrorState
-                  onRetry={() =>
-                    deptQuery.refetch()
-                  }
-                />
+                <ErrorState onRetry={() => deptQuery.refetch()} />
               </div>
             )}
 
-            {!isLoading &&
-              !isError &&
-              workOrders.length === 0 && (
-                <EmptyState />
-              )}
+            {!isLoading && !isError && workOrders.length === 0 && (
+              <EmptyState />
+            )}
 
-            {!isLoading &&
-              !isError &&
-              workOrders.length > 0 && (
-                <WorkOrderTable
-                  data={workOrders}
-                  flagMode={db.flagMode}
-                  selectedWoIds={
-                    db.selectedWoIds
-                  }
-                  onRowSelect={
-                    handleRowSelect
-                  }
-                  searchText=""
-                  isFullscreen={
-                    db.isFullscreen
-                  }
-                />
-              )}
+            {!isLoading && !isError && workOrders.length > 0 && (
+              <WorkOrderTable
+                data={filteredWorkOrders}
+                flagMode={db.flagMode}
+                selectedWoIds={db.selectedWoIds}
+                onRowSelect={handleRowSelect}
+                searchText=""
+                isFullscreen={
+                  db.isFullscreen && !incomingPopup.isOpen
+                }
+                resetKey={JSON.stringify(db.dashboardFilters)}
+              />
+            )}
           </div>
         </div>
 
-        {/*
-         * TopNav is outside the fullscreen target. This button is inside the
-         * target so it remains available when the dashboard enters fullscreen.
-         */}
-        {db.isFullscreen && (
-          <button
-            type="button"
-            onClick={db.exitFullscreen}
-            title="Exit fullscreen (Esc)"
-            aria-label="Exit fullscreen"
-            className="
-              fixed bottom-5 right-5 z-50
-              rounded-full bg-slate-900/85 p-3 text-white
-              shadow-xl transition-all
-              hover:scale-105 hover:bg-slate-950
-            "
-          >
-            <Minimize2 size={18} />
-          </button>
+        <IncomingFocusDashboard
+          isOpen={incomingPopup.isOpen}
+          sourceDepartment={incomingPopup.sourceDepartment}
+          targetDepartment={deptName}
+          initialPriority={incomingPopup.initialPriority}
+          workOrders={incomingFlow?.work_orders ?? []}
+          onClose={() =>
+            setIncomingPopup({
+              isOpen: false,
+              sourceDepartment: null,
+              initialPriority: null,
+            })
+          }
+        />
+
+        {db.isFullscreen && !incomingPopup.isOpen && (
+          <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2">
+            {db.hasActiveDashboardFilters && (
+              <button
+                type="button"
+                onClick={db.resetDashboardFilters}
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-xl transition hover:bg-slate-50"
+              >
+                <FilterX size={17} />
+                Reset Filters
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={db.exitFullscreen}
+              title="Exit fullscreen (Esc)"
+              aria-label="Exit fullscreen"
+              className="rounded-full bg-slate-900/85 p-3 text-white shadow-xl transition hover:scale-105 hover:bg-slate-950"
+            >
+              <Minimize2 size={18} />
+            </button>
+          </div>
         )}
       </div>
     </AppLayout>
