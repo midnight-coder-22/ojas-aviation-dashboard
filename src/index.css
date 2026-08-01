@@ -141,3 +141,15 @@ body {
   overflow: hidden;
   background: #f7f8fa;
 }
+
+/* Hide the scrollbar while keeping the element scrollable. */
+.fullscreen-table-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.fullscreen-table-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

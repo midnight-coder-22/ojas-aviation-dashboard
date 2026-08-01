@@ -1151,7 +1151,7 @@ export default function WorkOrderTable({
           border border-slate-200
           ${
             isFullscreen
-              ? 'min-h-0 flex-1 overflow-auto'
+              ? 'fullscreen-table-scroll min-h-0 flex-1 overflow-auto'
               : 'overflow-x-auto'
           }
         `}
