@@ -8,7 +8,13 @@ import {
 } from '../../utils/priorityChart'
 import { normalizeStatus } from '../../utils/dashboardFilters'
 
-const STATUS_ORDER = ['New', 'Ongoing', 'Overdue', 'Completed']
+const STATUS_ORDER = [
+  'New',
+  'Ongoing',
+  'Delayed',
+  'Overdue',
+  'Completed',
+]
 
 export default function StatusBarChart({
   workOrders = [],
@@ -28,6 +34,8 @@ export default function StatusBarChart({
     for (const workOrder of workOrders) {
       const status = normalizeStatus(workOrder.status)
       const priorityKey = normalizePriorityKey(workOrder.priority)
+
+      if (!counts[status]) continue
       counts[status][priorityKey] += 1
     }
 

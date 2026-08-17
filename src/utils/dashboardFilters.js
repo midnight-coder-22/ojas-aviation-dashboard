@@ -41,6 +41,7 @@ export function normalizeStatus(value) {
     ongoing: 'Ongoing',
     inprocess: 'Ongoing',
     inprogress: 'Ongoing',
+    delayed: 'Delayed',
     overdue: 'Overdue',
     completed: 'Completed',
     complete: 'Completed',
@@ -232,6 +233,8 @@ export function filterIncomingPopupRows(
 
     return (
       normalizeText(row?.wo_id).toLowerCase().includes(query) ||
+      normalizeText(row?.item_code).toLowerCase().includes(query) ||
+      normalizeText(row?.item_no).toLowerCase().includes(query) ||
       normalizeText(row?.wo_name).toLowerCase().includes(query)
     )
   })

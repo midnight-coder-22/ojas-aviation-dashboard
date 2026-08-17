@@ -1,23 +1,29 @@
 export const DEPARTMENTS = [
-  "CNC", "VMC", "CONVENTIONAL", "SHEET METAL", "PRODUCTION", "EDM"
+  'CNC',
+  'VMC',
+  'CONVENTIONAL',
+  'SHEET METAL',
+  'PRODUCTION',
+  'EDM',
 ]
 
-// "SHEET METAL" → "sheet-metal" (for URLs)
+// "SHEET METAL" -> "sheet-metal" (for URLs)
 export const deptToSlug = (dept) =>
   dept.toLowerCase().replace(/ /g, '-')
 
-// "sheet-metal" → "SHEET METAL" (from URL back to API name)
+// "sheet-metal" -> "SHEET METAL" (from URL back to API name)
 export const slugToDept = (slug) =>
   slug.toUpperCase().replace(/-/g, ' ')
 
-export const WO_AGEING_WARNING   = 14
-export const WO_AGEING_DANGER    = 30
+export const WO_AGEING_WARNING = 14
+export const WO_AGEING_DANGER = 30
 export const DEPT_AGEING_WARNING = 7
-export const DEPT_AGEING_DANGER  = 14
+export const DEPT_AGEING_DANGER = 14
 
 export const STATUS_DISPLAY = {
   New: 'New',
   Ongoing: 'Ongoing',
+  Delayed: 'Delayed',
   Overdue: 'Overdue',
   Completed: 'Completed',
 
@@ -26,7 +32,6 @@ export const STATUS_DISPLAY = {
   'In Process': 'Ongoing',
   InProgress: 'Ongoing',
   'In Progress': 'Ongoing',
-
   NotStarted: 'New',
   'Not Started': 'New',
 }
@@ -39,6 +44,10 @@ export const STATUS_COLORS = {
   Ongoing: {
     bg: 'bg-amber-100',
     text: 'text-amber-700',
+  },
+  Delayed: {
+    bg: 'bg-orange-100',
+    text: 'text-orange-800',
   },
   Overdue: {
     bg: 'bg-red-100',
@@ -77,15 +86,16 @@ export const STATUS_COLORS = {
 }
 
 export const PRIORITY_COLORS = {
-  Low:    { bg: 'bg-green-100', text: 'text-green-700' },
+  Low: { bg: 'bg-green-100', text: 'text-green-700' },
   Medium: { bg: 'bg-amber-100', text: 'text-amber-700' },
-  High:   { bg: 'bg-red-100',   text: 'text-red-700'   },
+  High: { bg: 'bg-red-100', text: 'text-red-700' },
 }
 
 export const CHART_COLORS = {
   status: {
     New: '#3B82F6',
     Ongoing: '#F59E0B',
+    Delayed: '#F97316',
     Overdue: '#DC2626',
     Completed: '#22C55E',
 
@@ -93,7 +103,6 @@ export const CHART_COLORS = {
     InProcess: '#F59E0B',
     InProgress: '#F59E0B',
   },
-
   priority: {
     Low: '#22C55E',
     Medium: '#F59E0B',
@@ -101,5 +110,5 @@ export const CHART_COLORS = {
   },
 }
 
-export const STORAGE_AUTH  = 'ojas_auth'
+export const STORAGE_AUTH = 'ojas_auth'
 export const STORAGE_TOKEN = 'ojas_token'
