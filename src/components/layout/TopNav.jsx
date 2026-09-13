@@ -45,115 +45,116 @@ export default function TopNav() {
   )
 
   const invalidateCurrentDepartment = (
-  department = db.currentDept,
+    department = db.currentDept,
   ) => {
-  if (!department) {
-    return Promise.resolve()
+    if (!department) {
+      return Promise.resolve()
+    }
+
+    return Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['dept-data', department],
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey: ['incoming-flow', department],
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey: ['dept-summary', department],
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey: ['flags', department],
+      }),
+    ])
   }
 
-  return Promise.all([
-    queryClient.invalidateQueries({
-      queryKey: ['dept-data', department],
-    }),
-
-    queryClient.invalidateQueries({
-    queryKey: ['incoming-flow', department],
-    }),
-
-    queryClient.invalidateQueries({
-      queryKey: ['dept-summary', department],
-    }),
-
-    queryClient.invalidateQueries({
-      queryKey: ['flags', department],
-    }),
-  ])
   const setFlagStateInCache = (
-  woIds,
-  hasActiveFlag,
-  department = db.currentDept,
-) => {
-  if (!department || woIds.length === 0) {
-    return
-  }
-  }
-  const normalizedIds = new Set(
-    woIds.map((woId) => String(woId).trim()),
-  )
+    woIds,
+    hasActiveFlag,
+    department = db.currentDept,
+  ) => {
+    if (!department || woIds.length === 0) {
+      return
+    }
 
-  /*
-   * Update the department-data cache immediately.
-   */
-  queryClient.setQueryData(
-    ['dept-data', department],
-    (currentData) => {
-      if (!currentData?.data) {
-        return currentData
-      }
+    const normalizedIds = new Set(
+      woIds.map((woId) => String(woId).trim()),
+    )
 
-      return {
-        ...currentData,
+    /*
+     * Update the department-data cache immediately.
+     */
+    queryClient.setQueryData(
+      ['dept-data', department],
+      (currentData) => {
+        if (!currentData?.data) {
+          return currentData
+        }
 
-        data: currentData.data.map((row) => {
-          const rowId = String(row.wo_id).trim()
+        return {
+          ...currentData,
 
-          if (!normalizedIds.has(rowId)) {
-            return row
-          }
+          data: currentData.data.map((row) => {
+            const rowId = String(row.wo_id).trim()
 
-          return {
-            ...row,
-            has_active_flag: hasActiveFlag,
-          }
-        }),
-      }
-    },
-  )
+            if (!normalizedIds.has(rowId)) {
+              return row
+            }
 
-  /*
-   * Update the dedicated active-flags cache immediately.
-   */
-  queryClient.setQueryData(
-    ['flags', department],
-    (currentFlags) => {
-      const existingFlags = Array.isArray(currentFlags)
-        ? currentFlags
-        : []
+            return {
+              ...row,
+              has_active_flag: hasActiveFlag,
+            }
+          }),
+        }
+      },
+    )
 
-      if (!hasActiveFlag) {
-        return existingFlags.filter(
-          (flag) =>
-            !normalizedIds.has(
-              String(flag.wo_id).trim(),
-            ),
+    /*
+     * Update the dedicated active-flags cache immediately.
+     */
+    queryClient.setQueryData(
+      ['flags', department],
+      (currentFlags) => {
+        const existingFlags = Array.isArray(currentFlags)
+          ? currentFlags
+          : []
+
+        if (!hasActiveFlag) {
+          return existingFlags.filter(
+            (flag) =>
+              !normalizedIds.has(
+                String(flag.wo_id).trim(),
+              ),
+          )
+        }
+
+        const existingIds = new Set(
+          existingFlags.map((flag) =>
+            String(flag.wo_id).trim(),
+          ),
         )
-      }
 
-      const existingIds = new Set(
-        existingFlags.map((flag) =>
-          String(flag.wo_id).trim(),
-        ),
-      )
+        const newFlags = [...normalizedIds]
+          .filter((woId) => !existingIds.has(woId))
+          .map((woId) => ({
+            sr_no: null,
+            wo_id: woId,
+            item_no: null,
+            department,
+            flag_status: 1,
+            raised_date: new Date().toISOString(),
+            resolved_date: null,
+            raised_by: user?.username ?? null,
+            resolved_by: null,
+          }))
 
-      const newFlags = [...normalizedIds]
-        .filter((woId) => !existingIds.has(woId))
-        .map((woId) => ({
-          sr_no: null,
-          wo_id: woId,
-          item_no: null,
-          department,
-          flag_status: 1,
-          raised_date: new Date().toISOString(),
-          resolved_date: null,
-          raised_by: user?.username ?? null,
-          resolved_by: null,
-        }))
-
-      return [...existingFlags, ...newFlags]
-    },
-  )
-}
-
+        return [...existingFlags, ...newFlags]
+      },
+    )
+  }
 
   const handleRefresh = () => {
     if (!db.currentDept || db.isRefreshing) return
