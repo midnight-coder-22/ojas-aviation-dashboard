@@ -1,5 +1,5 @@
 import { useState }           from 'react'
-import { useNavigate }        from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { useQueryClient }     from '@tanstack/react-query'
 import {
   BarChart3, ShieldAlert, AlertTriangle, Flag,
@@ -26,8 +26,7 @@ export default function ExecutiveDashboard() {
 
   // Redirect departmental users
   if (user && user.role === 'Departmental') {
-    navigate('/dashboard/' + deptToSlug(user.department || 'cnc'), { replace: true })
-    return null
+    return <Navigate to={'/dashboard/' + deptToSlug(user.department || 'cnc')} replace />
   }
 
   const totals = allSummaries.reduce((acc, s) => ({
