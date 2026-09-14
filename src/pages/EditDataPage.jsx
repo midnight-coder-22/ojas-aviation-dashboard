@@ -795,8 +795,8 @@ export default function EditDataPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <AppLayout>
-      <div className="space-y-4">
+    <AppLayout scrollable>
+      <div className="space-y-4 pt-4">
 
         {/* --------------------------------------------------------------- */}
         {/* Header */}
@@ -929,7 +929,7 @@ export default function EditDataPage() {
         {/* Sheet selector / sheet information */}
         {/* --------------------------------------------------------------- */}
 
-        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
 
           <SheetSelector
             activeSheet={

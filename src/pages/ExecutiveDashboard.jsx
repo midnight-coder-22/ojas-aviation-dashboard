@@ -79,7 +79,7 @@ export default function ExecutiveDashboard() {
   }
 
   return (
-    <AppLayout>
+    <AppLayout scrollable>
 
       {/* ---- HEADER ---- */}
       {!isFullscreen && (

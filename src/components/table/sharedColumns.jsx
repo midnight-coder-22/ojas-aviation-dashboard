@@ -47,6 +47,20 @@ export function getAgeingTextClass(
   return 'text-slate-600'
 }
 
+/* Long codes and names truncate below 2xl so every column fits on a laptop. */
+export function renderTruncated(
+  text,
+  className = 'max-w-[10rem] 2xl:max-w-none',
+) {
+  if (!text) return '—'
+
+  return (
+    <span className={`block truncate ${className}`} title={text}>
+      {text}
+    </span>
+  )
+}
+
 export function renderDeptChip(department) {
   if (!department) {
     return <span className="text-slate-300">—</span>
@@ -63,7 +77,7 @@ export const FLAGS_COLUMN = {
   key: 'has_active_flag',
   label: 'Flags',
   align: 'center',
-  className: 'px-3 py-3 text-center',
+  className: 'px-2 py-3 text-center 2xl:px-3',
   render: (row) =>
     isActiveFlag(row?.has_active_flag) ? (
       <span

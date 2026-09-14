@@ -126,6 +126,7 @@ export default function DepartmentDashboard() {
 
     return () => {
       db.setCurrentDept(null)
+      db.setWorkOrders([])
       db.cancelFlag()
     }
     // Dashboard action functions are stable and intentionally omitted.

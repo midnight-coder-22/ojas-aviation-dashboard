@@ -10,7 +10,10 @@ import {
 
 import LabeledRoundedStackSegment from './LabeledRoundedStackSegment'
 import { PRIORITY_SERIES } from '../../utils/priorityChart'
-import { getIntegerAxisScale } from '../../utils/chartScale'
+import {
+  fitTickWords,
+  getIntegerAxisScale,
+} from '../../utils/chartScale'
 
 function sameValue(first, second) {
   return String(first ?? '').trim().toLowerCase() ===
@@ -20,13 +23,23 @@ function sameValue(first, second) {
 function CategoryTick({
   x,
   y,
+  width,
+  index,
+  visibleTicksCount,
   payload,
+  categories = [],
   interactive,
   activeCategory,
   onCategoryClick,
 }) {
   const category = String(payload?.value ?? '').trim()
-  const words = category.split(/\s+/)
+  const words = fitTickWords({
+    label: category,
+    categories,
+    index,
+    axisWidth: width,
+    tickCount: visibleTicksCount,
+  })
   const isActive = activeCategory && sameValue(activeCategory, category)
 
   const activate = () => {
@@ -50,17 +63,18 @@ function CategoryTick({
       onKeyDown={interactive ? handleKeyDown : undefined}
       style={{ cursor: interactive ? 'pointer' : 'default' }}
     >
+      <title>{category}</title>
       <text
         textAnchor="middle"
         fill={isActive ? '#0F172A' : '#64748B'}
         fontSize={9}
         fontWeight={isActive ? 700 : 400}
       >
-        {words.map((word, index) => (
+        {words.map((word, line) => (
           <tspan
-            key={`${word}-${index}`}
+            key={`${word}-${line}`}
             x={0}
-            dy={index === 0 ? 12 : 11}
+            dy={line === 0 ? 12 : 11}
           >
             {word}
           </tspan>
@@ -139,6 +153,7 @@ export default function StandardPriorityBarChart({
   const axisScale = getIntegerAxisScale(
     Math.max(0, ...data.map((row) => Number(row.total) || 0)),
   )
+  const categories = data.map((row) => row[categoryKey])
 
   return (
     <ResponsiveContainer width="100%" height="100%" minHeight={175}>
@@ -161,6 +176,7 @@ export default function StandardPriorityBarChart({
           height={42}
           tick={
             <CategoryTick
+              categories={categories}
               interactive={Boolean(onCategoryClick)}
               activeCategory={activeCategory}
               onCategoryClick={onCategoryClick}

@@ -9,7 +9,10 @@ import {
   YAxis,
 } from 'recharts'
 
-import { getIntegerAxisScale } from '../../utils/chartScale'
+import {
+  fitTickWords,
+  getIntegerAxisScale,
+} from '../../utils/chartScale'
 
 function createRoundedBarPath({ x, y, width, height, radius = 7 }) {
   const safeRadius = Math.min(
@@ -44,13 +47,23 @@ function sameValue(first, second) {
 function CategoryTick({
   x,
   y,
+  width,
+  index,
+  visibleTicksCount,
   payload,
+  categories = [],
   activeValue,
   interactive,
   onClick,
 }) {
   const value = String(payload?.value ?? '').trim()
-  const words = value.split(/\s+/)
+  const words = fitTickWords({
+    label: value,
+    categories,
+    index,
+    axisWidth: width,
+    tickCount: visibleTicksCount,
+  })
   const isActive = activeValue && sameValue(activeValue, value)
 
   const activate = () => {
@@ -71,17 +84,18 @@ function CategoryTick({
       }}
       style={{ cursor: interactive ? 'pointer' : 'default' }}
     >
+      <title>{value}</title>
       <text
         textAnchor="middle"
         fill={isActive ? '#0F172A' : '#64748B'}
         fontSize={9}
         fontWeight={isActive ? 700 : 400}
       >
-        {words.map((word, index) => (
+        {words.map((word, line) => (
           <tspan
-            key={`${word}-${index}`}
+            key={`${word}-${line}`}
             x={0}
-            dy={index === 0 ? 12 : 11}
+            dy={line === 0 ? 12 : 11}
           >
             {word}
           </tspan>
@@ -196,6 +210,7 @@ export default function StandardSingleBarChart({
   const axisScale = getIntegerAxisScale(
     Math.max(0, ...data.map((row) => Number(row.value) || 0)),
   )
+  const categories = data.map((row) => row.name)
 
   return (
     <ResponsiveContainer width="100%" height="100%" minHeight={175}>
@@ -217,6 +232,7 @@ export default function StandardSingleBarChart({
           height={42}
           tick={
             <CategoryTick
+              categories={categories}
               activeValue={activeValue}
               interactive={Boolean(onCategoryClick)}
               onClick={onCategoryClick}

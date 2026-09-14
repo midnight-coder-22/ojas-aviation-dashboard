@@ -19,6 +19,7 @@ import {
   getAgeingTextClass,
   isActiveFlag,
   renderDeptChip,
+  renderTruncated,
 } from './sharedColumns'
 import {
   formatAgeingCompact,
@@ -221,7 +222,7 @@ const WORK_ORDER_COLUMNS = [
     key: 'wo_id',
     label: 'WO ID',
     sortType: 'text',
-    className: 'px-3 py-3',
+    className: 'px-2 py-3 2xl:px-3',
     render: (row) => (
       <span className="text-xs font-bold tracking-wide text-slate-800">
         {normalizeWoId(row?.wo_id) || '—'}
@@ -233,21 +234,21 @@ const WORK_ORDER_COLUMNS = [
     label: 'Item Code',
     sortType: 'text',
     className:
-      'whitespace-nowrap px-3 py-3 text-sm font-medium text-slate-700',
-    render: (row) => normalizeText(row?.item_code) || '—',
+      'whitespace-nowrap px-2 py-3 2xl:px-3 text-sm font-medium text-slate-700',
+    render: (row) => renderTruncated(normalizeText(row?.item_code)),
   },
   {
     key: 'dept_in_date',
     label: 'In Date',
     sortType: 'date',
-    className: 'whitespace-nowrap px-3 py-3 text-sm text-slate-600',
+    className: 'whitespace-nowrap px-2 py-3 2xl:px-3 text-sm text-slate-600',
     render: (row) => formatDate(row?.dept_in_date),
   },
   {
     key: 'wo_ageing_days',
     label: 'WO Ageing',
     sortType: 'number',
-    className: 'whitespace-nowrap px-3 py-3',
+    className: 'whitespace-nowrap px-2 py-3 2xl:px-3',
     render: (row) => (
       <span
         className={`text-sm font-semibold ${getAgeingTextClass(
@@ -264,21 +265,21 @@ const WORK_ORDER_COLUMNS = [
     key: 'wo_target_date',
     label: 'WO Due Dt',
     sortType: 'date',
-    className: 'whitespace-nowrap px-3 py-3 text-sm text-slate-600',
+    className: 'whitespace-nowrap px-2 py-3 2xl:px-3 text-sm text-slate-600',
     render: (row) => formatDate(row?.wo_target_date),
   },
   {
     key: 'dept_target_date',
     label: 'Dept Due Dt',
     sortType: 'date',
-    className: 'whitespace-nowrap px-3 py-3 text-sm text-slate-600',
+    className: 'whitespace-nowrap px-2 py-3 2xl:px-3 text-sm text-slate-600',
     render: (row) => formatDate(row?.dept_target_date),
   },
   {
     key: 'dept_ageing_days',
     label: 'Dept Ageing',
     sortType: 'number',
-    className: 'whitespace-nowrap px-3 py-3',
+    className: 'whitespace-nowrap px-2 py-3 2xl:px-3',
     render: (row) => (
       <span
         className={`text-sm font-semibold ${getAgeingTextClass(
@@ -296,34 +297,34 @@ const WORK_ORDER_COLUMNS = [
     label: 'Qty',
     sortType: 'number',
     align: 'right',
-    className: 'px-3 py-3 text-right text-sm text-slate-700',
+    className: 'px-2 py-3 2xl:px-3 text-right text-sm text-slate-700',
     render: (row) => formatQuantity(row?.planned_qty),
   },
   {
     key: 'next_dept',
     label: 'Next Department',
     sortType: 'text',
-    className: 'px-3 py-3',
+    className: 'px-2 py-3 2xl:px-3',
     render: (row) => renderDeptChip(row?.next_dept),
   },
   {
     key: 'priority',
     label: 'Priority',
     sortType: 'text',
-    className: 'px-3 py-3',
+    className: 'px-2 py-3 2xl:px-3',
     render: (row) => <PriorityBadge priority={row?.priority} />,
   },
   {
     key: 'status',
     label: 'Status',
     sortType: 'text',
-    className: 'px-3 py-3',
+    className: 'px-2 py-3 2xl:px-3',
     render: (row) => <StatusBadge status={row?.status} />,
   },
   {
     key: 'alerts',
     label: 'Alerts',
-    className: 'px-3 py-3',
+    className: 'px-2 py-3 2xl:px-3',
     render: (row) => (
       <div className="flex items-center gap-1.5">
         {row?.mi_alert && <AlertBadge type="MI" />}
@@ -826,7 +827,7 @@ export default function WorkOrderTable({
               : 'descending'
             : undefined
         }
-        className={`whitespace-nowrap px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 ${alignmentClass} ${className}`}
+        className={`whitespace-nowrap px-2 py-3 2xl:px-3 text-xs font-semibold uppercase tracking-wide text-slate-500 ${alignmentClass} ${className}`}
       >
         {isSortable ? (
           <button
