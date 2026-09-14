@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronDown, Search, Circle } from 'lucide-react'
-import { DEPARTMENTS, deptToSlug, slugToDept } from '../../utils/constants'
+import {
+  DEPARTMENTS,
+  QC_DEPARTMENT,
+  deptToSlug,
+  slugToDept,
+} from '../../utils/constants'
 import { useAuth } from '../../context/AuthContext'
+
+const DASHBOARD_TARGETS = [...DEPARTMENTS, QC_DEPARTMENT]
 
 export default function DeptSelector() {
   const [isOpen, setIsOpen] = useState(false)
@@ -43,7 +50,7 @@ export default function DeptSelector() {
     }
   }, [])
 
-  const filteredDepts = DEPARTMENTS.filter((department) =>
+  const filteredDepts = DASHBOARD_TARGETS.filter((department) =>
     department.toLowerCase().includes(search.toLowerCase()),
   )
 

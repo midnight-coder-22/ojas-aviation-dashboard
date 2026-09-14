@@ -1,7 +1,15 @@
 import apiClient from './client'
 
 
-// GET /api/edit-data/wos
+const SHEET_PATHS = {
+  wos: 'wos',
+  ows: 'ows',
+  grn_qc: 'grn-qc',
+  wo_mi: 'wo-mi',
+}
+
+
+// GET /api/edit-data/{wos | ows | grn-qc | wo-mi}
 //
 // Returns:
 // {
@@ -11,20 +19,9 @@ import apiClient from './client'
 //   total_rows
 // }
 
-export const fetchWosSheet = async () => {
+export const fetchEditSheet = async (sheetKey) => {
   const res = await apiClient.get(
-    '/api/edit-data/wos',
-  )
-
-  return res.data
-}
-
-
-// GET /api/edit-data/ows
-
-export const fetchOwsSheet = async () => {
-  const res = await apiClient.get(
-    '/api/edit-data/ows',
+    `/api/edit-data/${SHEET_PATHS[sheetKey]}`,
   )
 
   return res.data

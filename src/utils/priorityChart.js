@@ -48,32 +48,28 @@ export function normalizePriorityKey(value) {
  *
  * topKey identifies which visible segment receives rounded upper corners.
  */
-export function addPriorityStackMeta(row) {
-  const low = Number(row.low) || 0
-  const medium = Number(row.medium) || 0
-  const high = Number(row.high) || 0
+export function addStackMeta(row, series = PRIORITY_SERIES) {
+  const normalizedRow = { ...row }
+  let total = 0
 
-  const total = low + medium + high
-
-  const normalizedRow = {
-    ...row,
-    low,
-    medium,
-    high,
-    total,
+  for (const { key } of series) {
+    normalizedRow[key] = Number(row[key]) || 0
+    total += normalizedRow[key]
   }
 
   const topKey =
-    [...PRIORITY_SERIES]
+    [...series]
       .reverse()
-      .find(
-        (series) =>
-          normalizedRow[series.key] > 0,
-      )
+      .find(({ key }) => normalizedRow[key] > 0)
       ?.key ?? null
 
   return {
     ...normalizedRow,
+    total,
     topKey,
   }
+}
+
+export function addPriorityStackMeta(row) {
+  return addStackMeta(row, PRIORITY_SERIES)
 }

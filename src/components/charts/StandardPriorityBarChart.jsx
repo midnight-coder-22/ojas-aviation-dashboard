@@ -70,7 +70,12 @@ function CategoryTick({
   )
 }
 
-function PriorityStackTooltip({ active, payload, label }) {
+function PriorityStackTooltip({
+  active,
+  payload,
+  label,
+  series = PRIORITY_SERIES,
+}) {
   if (!active || !payload?.length) return null
 
   const row = payload[0]?.payload ?? {}
@@ -79,20 +84,20 @@ function PriorityStackTooltip({ active, payload, label }) {
     <div className="min-w-40 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
       <p className="mb-2 font-semibold text-slate-800">{label}</p>
       <div className="space-y-1.5">
-        {PRIORITY_SERIES.map((series) => (
+        {series.map((item) => (
           <div
-            key={series.key}
+            key={item.key}
             className="flex items-center justify-between gap-6"
           >
             <span className="flex items-center gap-2 text-slate-600">
               <span
                 className="h-2.5 w-2.5 rounded-sm"
-                style={{ backgroundColor: series.color }}
+                style={{ backgroundColor: item.color }}
               />
-              {series.label}
+              {item.label}
             </span>
             <span className="font-semibold text-slate-800">
-              {Number(row[series.key]) || 0}
+              {Number(row[item.key]) || 0}
             </span>
           </div>
         ))}
@@ -117,6 +122,8 @@ export default function StandardPriorityBarChart({
   activePriority = null,
   onCategoryClick,
   onSegmentClick,
+  series = PRIORITY_SERIES,
+  seriesLabel = 'priority',
 }) {
   const hasData = data.some((row) => Number(row.total) > 0)
   const interactive = Boolean(onCategoryClick || onSegmentClick)
@@ -184,24 +191,24 @@ export default function StandardPriorityBarChart({
         />
 
         <Tooltip
-          content={<PriorityStackTooltip />}
+          content={<PriorityStackTooltip series={series} />}
           cursor={{ fill: '#F8FAFC' }}
         />
 
-        {PRIORITY_SERIES.map((series) => (
+        {series.map((item) => (
           <Bar
-            key={series.key}
-            dataKey={series.key}
-            name={series.label}
+            key={item.key}
+            dataKey={item.key}
+            name={item.label}
             stackId="priority"
-            fill={series.color}
+            fill={item.color}
             maxBarSize={30}
             shape={(shapeProps) => {
               const category = shapeProps.payload?.[categoryKey]
               const categoryMatches =
                 !activeCategory || sameValue(activeCategory, category)
               const priorityMatches =
-                !activePriority || sameValue(activePriority, series.label)
+                !activePriority || sameValue(activePriority, item.label)
               const hasSelection = Boolean(
                 activeCategory || activePriority,
               )
@@ -209,7 +216,7 @@ export default function StandardPriorityBarChart({
               return (
                 <LabeledRoundedStackSegment
                   {...shapeProps}
-                  dataKey={series.key}
+                  dataKey={item.key}
                   radius={7}
                   showTotal
                   interactive={Boolean(onSegmentClick)}
@@ -217,11 +224,11 @@ export default function StandardPriorityBarChart({
                     hasSelection && categoryMatches && priorityMatches
                   }
                   isDimmed={!categoryMatches || !priorityMatches}
-                  ariaLabel={`${category}, ${series.label} priority`}
+                  ariaLabel={`${category}, ${item.label} ${seriesLabel}`}
                   onClick={() =>
                     onSegmentClick?.({
                       category,
-                      priority: series.label,
+                      priority: item.label,
                       row: shapeProps.payload,
                     })
                   }

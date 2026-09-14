@@ -1,5 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
-import { fetchOwsSheet, fetchWosSheet } from '../api/editData'
+import { fetchEditSheet } from '../api/editData'
+import { EDIT_SHEETS } from '../utils/constants'
 
 const sharedQueryOptions = {
   staleTime: 0,
@@ -12,31 +13,19 @@ const sharedQueryOptions = {
   refetchOnReconnect: false,
 }
 
+/* One query per Edit Data sheet, keyed by sheet key. */
 export const useEditData = () => {
   const results = useQueries({
-    queries: [
-      {
-        queryKey: ['edit-wos'],
-        queryFn: fetchWosSheet,
-        ...sharedQueryOptions,
-      },
-      {
-        queryKey: ['edit-ows'],
-        queryFn: fetchOwsSheet,
-        ...sharedQueryOptions,
-      },
-    ],
+    queries: EDIT_SHEETS.map(({ key }) => ({
+      queryKey: [`edit-${key}`],
+      queryFn: () => fetchEditSheet(key),
+      ...sharedQueryOptions,
+    })),
   })
 
   return {
-    wosData: results[0].data,
-    owsData: results[1].data,
-    isLoading: results.some(result => result.isLoading),
-    isError: results.some(result => result.isError),
-    refetchAll: () =>
-      Promise.all([
-        results[0].refetch(),
-        results[1].refetch(),
-      ]),
+    sheets: Object.fromEntries(
+      EDIT_SHEETS.map(({ key }, index) => [key, results[index]]),
+    ),
   }
 }

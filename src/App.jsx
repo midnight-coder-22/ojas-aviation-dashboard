@@ -7,6 +7,7 @@ import LoginPage             from './pages/LoginPage'
 import DepartmentDashboard   from './pages/DepartmentDashboard'
 import ExecutiveDashboard    from './pages/ExecutiveDashboard'
 import EditDataPage          from './pages/EditDataPage'
+import QcDashboard           from './pages/QcDashboard'
 
 // Redirect to correct dashboard based on role
 function DefaultRedirect() {
@@ -50,6 +51,10 @@ export default function App() {
 
       <Route path="/dashboard/executive" element={
         <ProtectedRoute><ExecutiveDashboard /></ProtectedRoute>
+      } />
+
+      <Route path="/dashboard/qc" element={
+        <ProtectedRoute><QcDashboard /></ProtectedRoute>
       } />
 
       <Route path="/dashboard/:dept" element={

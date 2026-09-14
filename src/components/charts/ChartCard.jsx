@@ -8,11 +8,16 @@ export default function ChartCard({
   metricValue,
   metricLabel,
   showPriorityLegend = false,
+  legendSeries = null,
   children,
 }) {
   const showMetric =
     metricValue !== null &&
     metricValue !== undefined
+
+  const legend =
+    legendSeries ??
+    (showPriorityLegend ? PRIORITY_SERIES : null)
 
   return (
     <div className="flex h-[290px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -46,9 +51,9 @@ export default function ChartCard({
         )}
       </div>
 
-      {showPriorityLegend && (
+      {legend && (
         <div className="mb-1 mt-1 flex shrink-0 flex-wrap justify-end gap-2">
-          {PRIORITY_SERIES.map(
+          {legend.map(
             (series) => (
               <span
                 key={series.key}

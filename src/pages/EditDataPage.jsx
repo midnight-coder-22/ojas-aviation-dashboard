@@ -34,6 +34,7 @@ import {
 
 import { ToastContext } from '../context/ToastContext'
 import { useAuth } from '../context/AuthContext'
+import { EDIT_SHEETS } from '../utils/constants'
 
 
 const EMPTY_SHEET_STATE = {
@@ -41,6 +42,13 @@ const EMPTY_SHEET_STATE = {
   draft: [],
   dirty: false,
   revision: 0,
+}
+
+
+function mapSheets(createValue) {
+  return Object.fromEntries(
+    EDIT_SHEETS.map(({ key }) => [key, createValue(key)]),
+  )
 }
 
 
@@ -172,13 +180,7 @@ export default function EditDataPage() {
   const { showToast } =
     useContext(ToastContext)
 
-  const {
-    wosData,
-    owsData,
-    isLoading,
-    isError,
-    refetchAll,
-  } = useEditData()
+  const { sheets } = useEditData()
 
 
   // ---------------------------------------------------------------------------
@@ -194,15 +196,9 @@ export default function EditDataPage() {
   const [
     sheetState,
     setSheetState,
-  ] = useState({
-    wos: {
-      ...EMPTY_SHEET_STATE,
-    },
-
-    ows: {
-      ...EMPTY_SHEET_STATE,
-    },
-  })
+  ] = useState(
+    () => mapSheets(() => ({ ...EMPTY_SHEET_STATE })),
+  )
 
 
   const [
@@ -217,16 +213,14 @@ export default function EditDataPage() {
   ] = useState(false)
 
 
-  // Tracks whether BOTH sheets have been
-  // explicitly committed during the
-  // current posting cycle.
+  // Tracks which sheets have been explicitly
+  // committed during the current posting cycle.
   const [
     committedSheets,
     setCommittedSheets,
-  ] = useState({
-    wos: false,
-    ows: false,
-  })
+  ] = useState(
+    () => mapSheets(() => false),
+  )
 
 
   // ---------------------------------------------------------------------------
@@ -311,26 +305,30 @@ export default function EditDataPage() {
     )
 
 
-  useEffect(() => {
-    loadSheetPayload(
-      'wos',
-      wosData,
-    )
-  }, [
-    wosData,
-    loadSheetPayload,
-  ])
+  const wosPayload = sheets.wos.data
+  const owsPayload = sheets.ows.data
+  const grnQcPayload = sheets.grn_qc.data
+  const woMiPayload = sheets.wo_mi.data
 
 
   useEffect(() => {
-    loadSheetPayload(
-      'ows',
-      owsData,
-    )
-  }, [
-    owsData,
-    loadSheetPayload,
-  ])
+    loadSheetPayload('wos', wosPayload)
+  }, [wosPayload, loadSheetPayload])
+
+
+  useEffect(() => {
+    loadSheetPayload('ows', owsPayload)
+  }, [owsPayload, loadSheetPayload])
+
+
+  useEffect(() => {
+    loadSheetPayload('grn_qc', grnQcPayload)
+  }, [grnQcPayload, loadSheetPayload])
+
+
+  useEffect(() => {
+    loadSheetPayload('wo_mi', woMiPayload)
+  }, [woMiPayload, loadSheetPayload])
 
 
   // ---------------------------------------------------------------------------
@@ -341,22 +339,27 @@ export default function EditDataPage() {
     sheetState[activeSheet]
 
 
+  const activeQuery =
+    sheets[activeSheet]
+
+
+  const activeSheetLabel =
+    EDIT_SHEETS.find(
+      sheet => sheet.key === activeSheet,
+    )?.shortLabel ?? activeSheet
+
+
   const dirtySheets =
     useMemo(
-      () => ({
-        wos:
-          sheetState.wos.dirty,
-
-        ows:
-          sheetState.ows.dirty,
-      }),
+      () => mapSheets(
+        key => sheetState[key].dirty,
+      ),
       [sheetState],
     )
 
 
   const hasAnyUnsavedChanges =
-    dirtySheets.wos ||
-    dirtySheets.ows
+    Object.values(dirtySheets).some(Boolean)
 
 
   // ---------------------------------------------------------------------------
@@ -366,18 +369,19 @@ export default function EditDataPage() {
   //
   // 1. WOS has been committed
   // 2. OWS has been committed
-  // 3. Neither sheet has new unsaved changes
+  // 3. No sheet has new unsaved changes
   // 4. No other request is running
+  //
+  // The QC sheets are optional: commit them when their reports change.
   // ---------------------------------------------------------------------------
 
   const canPostData =
-    committedSheets.wos &&
-    committedSheets.ows &&
+    EDIT_SHEETS
+      .filter(sheet => sheet.required)
+      .every(sheet => committedSheets[sheet.key]) &&
     !hasAnyUnsavedChanges &&
     !isCommitting &&
-    !isPosting &&
-    !isLoading &&
-    !isError
+    !isPosting
 
 
   // ---------------------------------------------------------------------------
@@ -389,46 +393,27 @@ export default function EditDataPage() {
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    if (!sheetState.wos.dirty) {
-      return
-    }
-
     setCommittedSheets(
       previous => {
-        if (!previous.wos) {
+        const revokedKeys = EDIT_SHEETS
+          .map(({ key }) => key)
+          .filter(key => dirtySheets[key] && previous[key])
+
+        if (revokedKeys.length === 0) {
           return previous
         }
 
-        return {
-          ...previous,
-          wos: false,
+        const next = { ...previous }
+
+        for (const key of revokedKeys) {
+          next[key] = false
         }
+
+        return next
       },
     )
   }, [
-    sheetState.wos.dirty,
-  ])
-
-
-  useEffect(() => {
-    if (!sheetState.ows.dirty) {
-      return
-    }
-
-    setCommittedSheets(
-      previous => {
-        if (!previous.ows) {
-          return previous
-        }
-
-        return {
-          ...previous,
-          ows: false,
-        }
-      },
-    )
-  }, [
-    sheetState.ows.dirty,
+    dirtySheets,
   ])
 
 
@@ -557,7 +542,7 @@ export default function EditDataPage() {
     )
 
     showToast(
-      `${activeSheet.toUpperCase()} changes reset.`,
+      `${activeSheetLabel} changes reset.`,
       'success',
     )
   }
@@ -697,7 +682,7 @@ export default function EditDataPage() {
 
       showToast(
         result.message ||
-          `${activeSheet.toUpperCase()} committed successfully.`,
+          `${activeSheetLabel} committed successfully.`,
         'success',
       )
 
@@ -752,10 +737,9 @@ export default function EditDataPage() {
         // Before another Databricks trigger,
         // both WOS and OWS must again
         // be explicitly committed.
-        setCommittedSheets({
-          wos: false,
-          ows: false,
-        })
+        setCommittedSheets(
+          mapSheets(() => false),
+        )
 
 
         const runMessage =
@@ -869,8 +853,8 @@ export default function EditDataPage() {
               disabled={
                 isCommitting ||
                 isPosting ||
-                isLoading ||
-                isError ||
+                activeQuery.isLoading ||
+                activeQuery.isError ||
                 committedSheets[
                   activeSheet
                 ]
@@ -974,48 +958,31 @@ export default function EditDataPage() {
             </span>
 
 
-            {/* WOS commit status */}
+            {/* Commit status per sheet */}
 
-            <span
-              className={
-                committedSheets.wos
-                  ? 'inline-flex items-center gap-1.5 font-semibold text-emerald-600'
-                  : 'inline-flex items-center gap-1.5 text-slate-400'
-              }
-            >
-              {committedSheets.wos && (
-                <CheckCircle2
-                  size={14}
-                />
-              )}
+            {EDIT_SHEETS.map(sheet => (
+              <span
+                key={sheet.key}
+                className={
+                  committedSheets[sheet.key]
+                    ? 'inline-flex items-center gap-1.5 font-semibold text-emerald-600'
+                    : 'inline-flex items-center gap-1.5 text-slate-400'
+                }
+              >
+                {committedSheets[sheet.key] && (
+                  <CheckCircle2
+                    size={14}
+                  />
+                )}
 
-              WOS{' '}
-              {committedSheets.wos
-                ? 'committed'
-                : 'not committed'}
-            </span>
-
-
-            {/* OWS commit status */}
-
-            <span
-              className={
-                committedSheets.ows
-                  ? 'inline-flex items-center gap-1.5 font-semibold text-emerald-600'
-                  : 'inline-flex items-center gap-1.5 text-slate-400'
-              }
-            >
-              {committedSheets.ows && (
-                <CheckCircle2
-                  size={14}
-                />
-              )}
-
-              OWS{' '}
-              {committedSheets.ows
-                ? 'committed'
-                : 'not committed'}
-            </span>
+                {sheet.shortLabel}{' '}
+                {committedSheets[sheet.key]
+                  ? 'committed'
+                  : sheet.required
+                    ? 'not committed'
+                    : 'optional'}
+              </span>
+            ))}
 
 
             {activeState.dirty && (
@@ -1024,7 +991,7 @@ export default function EditDataPage() {
                 <span className="h-2 w-2 rounded-full bg-orange-500" />
 
                 Unsaved changes in{' '}
-                {activeSheet.toUpperCase()}
+                {activeSheetLabel}
               </span>
             )}
 
@@ -1077,7 +1044,7 @@ export default function EditDataPage() {
         {/* Loading */}
         {/* --------------------------------------------------------------- */}
 
-        {isLoading && (
+        {activeQuery.isLoading && (
           <LoadingSkeleton />
         )}
 
@@ -1086,10 +1053,14 @@ export default function EditDataPage() {
         {/* Error */}
         {/* --------------------------------------------------------------- */}
 
-        {isError && (
+        {activeQuery.isError && (
           <ErrorState
+            message={
+              activeQuery.error?.response?.data?.detail ||
+              'Failed to load data'
+            }
             onRetry={
-              refetchAll
+              () => activeQuery.refetch()
             }
           />
         )}
@@ -1099,8 +1070,8 @@ export default function EditDataPage() {
         {/* Spreadsheet */}
         {/* --------------------------------------------------------------- */}
 
-        {!isLoading &&
-          !isError && (
+        {!activeQuery.isLoading &&
+          !activeQuery.isError && (
             <SpreadsheetGrid
               key={
                 `${activeSheet}-${activeState.revision}`

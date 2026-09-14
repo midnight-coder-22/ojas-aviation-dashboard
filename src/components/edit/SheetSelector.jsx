@@ -1,13 +1,4 @@
-const SHEETS = [
-  {
-    key: 'wos',
-    label: 'Work Order Summary Report',
-  },
-  {
-    key: 'ows',
-    label: 'Operation Wise WIP Status',
-  },
-]
+import { EDIT_SHEETS } from '../../utils/constants'
 
 export default function SheetSelector({
   activeSheet,
@@ -16,7 +7,7 @@ export default function SheetSelector({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {SHEETS.map(({ key, label }) => {
+      {EDIT_SHEETS.map(({ key, label }) => {
         const isActive = activeSheet === key
         const isDirty = Boolean(dirtySheets[key])
 

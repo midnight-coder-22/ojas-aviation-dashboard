@@ -8,19 +8,24 @@ import {
 import {
   ChevronDown,
   ChevronUp,
-  CircleAlert,
 } from 'lucide-react'
 
 import StatusBadge from '../ui/StatusBadge'
 import PriorityBadge from '../ui/PriorityBadge'
 import ExpandedRow from './ExpandedRow'
 import {
+  FLAGS_COLUMN,
+  formatQuantity,
+  getAgeingTextClass,
+  isActiveFlag,
+  renderDeptChip,
+} from './sharedColumns'
+import {
   formatAgeingCompact,
   formatDate,
 } from '../../utils/formatters'
 
 const ROWS_OPTIONS = [10, 25, 50]
-const TABLE_COLUMN_COUNT = 13
 
 /* Fullscreen infinite-scroll settings. */
 const AUTO_SCROLL_PIXELS_PER_SECOND = 18
@@ -30,32 +35,6 @@ const FULLSCREEN_SPACER_ROW_COUNT = 2
 const FULLSCREEN_SPACER_ROW_HEIGHT_PX = 52
 const ESTIMATED_VISIBLE_ROW_CAPACITY = 18
 const MAX_FULLSCREEN_CYCLE_COUNT = 8
-
-const SORTABLE_FIELDS = new Set([
-  'wo_id',
-  'item_code',
-  'dept_in_date',
-  'wo_ageing_days',
-  'wo_target_date',
-  'dept_target_date',
-  'dept_ageing_days',
-  'planned_qty',
-  'next_dept',
-  'priority',
-  'status',
-])
-
-const NUMERIC_FIELDS = new Set([
-  'wo_ageing_days',
-  'dept_ageing_days',
-  'planned_qty',
-])
-
-const DATE_FIELDS = new Set([
-  'dept_in_date',
-  'wo_target_date',
-  'dept_target_date',
-])
 
 /*
  * Delayed is included because the backend now assigns it whenever the
@@ -83,29 +62,6 @@ function normalizeStatusKey(value) {
   return normalizeText(value)
     .toLowerCase()
     .replace(/[\s_-]+/g, '')
-}
-
-function isActiveFlag(value) {
-  if (value === true || value === 1) return true
-
-  if (typeof value === 'string') {
-    return ['true', '1', 'yes', 'y', 'active'].includes(
-      value.trim().toLowerCase(),
-    )
-  }
-
-  return false
-}
-
-function formatQuantity(value) {
-  const normalized = normalizeText(value)
-
-  if (!normalized) return '—'
-
-  const numericValue = Number(value)
-  return Number.isFinite(numericValue)
-    ? numericValue.toLocaleString()
-    : normalized
 }
 
 function parseSortableNumber(value) {
@@ -185,28 +141,16 @@ function getDeadlineState(row) {
   return null
 }
 
-function getAgeingTextClass(
-  value,
-  warningThreshold,
-  dangerThreshold,
-) {
-  const numericValue = parseSortableNumber(value)
-
-  if (numericValue === null) return 'text-slate-400'
-  if (numericValue > dangerThreshold) return 'text-red-500'
-  if (numericValue > warningThreshold) return 'text-amber-500'
-  return 'text-slate-600'
-}
-
 function compareValues(
   firstRow,
   secondRow,
   field,
   direction,
+  sortType,
 ) {
   const multiplier = direction === 'asc' ? 1 : -1
 
-  if (NUMERIC_FIELDS.has(field)) {
+  if (sortType === 'number') {
     const firstNumber = parseSortableNumber(firstRow?.[field])
     const secondNumber = parseSortableNumber(secondRow?.[field])
 
@@ -219,7 +163,7 @@ function compareValues(
     return 0
   }
 
-  if (DATE_FIELDS.has(field)) {
+  if (sortType === 'date') {
     const firstTime = parseSortableDate(firstRow?.[field])
     const secondTime = parseSortableDate(secondRow?.[field])
 
@@ -271,6 +215,135 @@ function AlertBadge({ type }) {
   )
 }
 
+/* Department dashboard columns; see sharedColumns.jsx for the column shape. */
+const WORK_ORDER_COLUMNS = [
+  {
+    key: 'wo_id',
+    label: 'WO ID',
+    sortType: 'text',
+    className: 'px-3 py-3',
+    render: (row) => (
+      <span className="text-xs font-bold tracking-wide text-slate-800">
+        {normalizeWoId(row?.wo_id) || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'item_code',
+    label: 'Item Code',
+    sortType: 'text',
+    className:
+      'whitespace-nowrap px-3 py-3 text-sm font-medium text-slate-700',
+    render: (row) => normalizeText(row?.item_code) || '—',
+  },
+  {
+    key: 'dept_in_date',
+    label: 'In Date',
+    sortType: 'date',
+    className: 'whitespace-nowrap px-3 py-3 text-sm text-slate-600',
+    render: (row) => formatDate(row?.dept_in_date),
+  },
+  {
+    key: 'wo_ageing_days',
+    label: 'WO Ageing',
+    sortType: 'number',
+    className: 'whitespace-nowrap px-3 py-3',
+    render: (row) => (
+      <span
+        className={`text-sm font-semibold ${getAgeingTextClass(
+          row?.wo_ageing_days,
+          14,
+          30,
+        )}`}
+      >
+        {formatAgeingCompact(row?.wo_ageing_days)}
+      </span>
+    ),
+  },
+  {
+    key: 'wo_target_date',
+    label: 'WO Due Dt',
+    sortType: 'date',
+    className: 'whitespace-nowrap px-3 py-3 text-sm text-slate-600',
+    render: (row) => formatDate(row?.wo_target_date),
+  },
+  {
+    key: 'dept_target_date',
+    label: 'Dept Due Dt',
+    sortType: 'date',
+    className: 'whitespace-nowrap px-3 py-3 text-sm text-slate-600',
+    render: (row) => formatDate(row?.dept_target_date),
+  },
+  {
+    key: 'dept_ageing_days',
+    label: 'Dept Ageing',
+    sortType: 'number',
+    className: 'whitespace-nowrap px-3 py-3',
+    render: (row) => (
+      <span
+        className={`text-sm font-semibold ${getAgeingTextClass(
+          row?.dept_ageing_days,
+          7,
+          14,
+        )}`}
+      >
+        {formatAgeingCompact(row?.dept_ageing_days)}
+      </span>
+    ),
+  },
+  {
+    key: 'planned_qty',
+    label: 'Qty',
+    sortType: 'number',
+    align: 'right',
+    className: 'px-3 py-3 text-right text-sm text-slate-700',
+    render: (row) => formatQuantity(row?.planned_qty),
+  },
+  {
+    key: 'next_dept',
+    label: 'Next Department',
+    sortType: 'text',
+    className: 'px-3 py-3',
+    render: (row) => renderDeptChip(row?.next_dept),
+  },
+  {
+    key: 'priority',
+    label: 'Priority',
+    sortType: 'text',
+    className: 'px-3 py-3',
+    render: (row) => <PriorityBadge priority={row?.priority} />,
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    sortType: 'text',
+    className: 'px-3 py-3',
+    render: (row) => <StatusBadge status={row?.status} />,
+  },
+  {
+    key: 'alerts',
+    label: 'Alerts',
+    className: 'px-3 py-3',
+    render: (row) => (
+      <div className="flex items-center gap-1.5">
+        {row?.mi_alert && <AlertBadge type="MI" />}
+        {row?.qc_alert && <AlertBadge type="QC" />}
+
+        {!row?.mi_alert && !row?.qc_alert && (
+          <span className="text-sm text-slate-300">
+            —
+          </span>
+        )}
+      </div>
+    ),
+  },
+  FLAGS_COLUMN,
+]
+
+const getWorkOrderRowId = (row) => normalizeWoId(row?.wo_id)
+
+const renderWorkOrderExpandedRow = (row) => <ExpandedRow row={row} />
+
 export default function WorkOrderTable({
   data = [],
   flagMode = null,
@@ -279,16 +352,31 @@ export default function WorkOrderTable({
   searchText = '',
   isFullscreen = false,
   resetKey = '',
+  columns = WORK_ORDER_COLUMNS,
+  getRowId = getWorkOrderRowId,
+  renderExpandedRow = renderWorkOrderExpandedRow,
+  defaultSortField = 'wo_ageing_days',
+  emptyMessage = 'No matching work orders.',
 }) {
-  const [sortField, setSortField] = useState('wo_ageing_days')
+  const [sortField, setSortField] = useState(defaultSortField)
   const [sortDir, setSortDir] = useState('desc')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
-  const [expandedWoId, setExpandedWoId] = useState(null)
+  const [expandedRowId, setExpandedRowId] = useState(null)
 
   const tableViewportRef = useRef(null)
   const firstCycleStartRef = useRef(null)
   const secondCycleStartRef = useRef(null)
+
+  const sortTypes = useMemo(
+    () =>
+      new Map(
+        columns
+          .filter((column) => column.sortType)
+          .map((column) => [column.key, column.sortType]),
+      ),
+    [columns],
+  )
 
   const safeData = useMemo(
     () => (Array.isArray(data) ? data : []),
@@ -332,9 +420,10 @@ export default function WorkOrderTable({
           secondRow,
           sortField,
           sortDir,
+          sortTypes.get(sortField),
         ),
       ),
-    [filtered, sortDir, sortField],
+    [filtered, sortDir, sortField, sortTypes],
   )
 
   const totalPages = Math.max(
@@ -354,29 +443,29 @@ export default function WorkOrderTable({
 
   useEffect(() => {
     setPage(1)
-    setExpandedWoId(null)
+    setExpandedRowId(null)
 
     const viewport = tableViewportRef.current
     if (viewport) viewport.scrollTop = 0
   }, [resetKey])
 
   useEffect(() => {
-    if (flagMode) setExpandedWoId(null)
+    if (flagMode) setExpandedRowId(null)
   }, [flagMode])
 
   useEffect(() => {
-    if (isFullscreen) setExpandedWoId(null)
+    if (isFullscreen) setExpandedRowId(null)
   }, [isFullscreen])
 
   useEffect(() => {
-    if (!expandedWoId) return
+    if (!expandedRowId) return
 
     const rowStillExists = filtered.some(
-      (row) => normalizeWoId(row?.wo_id) === expandedWoId,
+      (row) => getRowId(row) === expandedRowId,
     )
 
-    if (!rowStillExists) setExpandedWoId(null)
-  }, [expandedWoId, filtered])
+    if (!rowStillExists) setExpandedRowId(null)
+  }, [expandedRowId, filtered, getRowId])
 
   const pageStart = (page - 1) * perPage
 
@@ -475,7 +564,7 @@ export default function WorkOrderTable({
     if (
       !isFullscreen ||
       flagMode ||
-      expandedWoId ||
+      expandedRowId ||
       displayedRows.length === 0 ||
       !viewport
     ) {
@@ -574,7 +663,7 @@ export default function WorkOrderTable({
     }
   }, [
     displayedRows.length,
-    expandedWoId,
+    expandedRowId,
     flagMode,
     fullscreenCycleCount,
     isFullscreen,
@@ -585,7 +674,7 @@ export default function WorkOrderTable({
   ])
 
   const handleSort = (field) => {
-    if (!SORTABLE_FIELDS.has(field)) return
+    if (!sortTypes.has(field)) return
 
     if (sortField === field) {
       setSortDir((currentDirection) =>
@@ -601,36 +690,40 @@ export default function WorkOrderTable({
 
   const handleRowClick = (row) => {
     const woId = normalizeWoId(row?.wo_id)
-    if (!woId) return
-
     const rowIsFlagged = isActiveFlag(row?.has_active_flag)
 
     if (flagMode === 'add') {
-      if (!rowIsFlagged) onRowSelect(woId)
+      if (woId && !rowIsFlagged) onRowSelect(woId)
       return
     }
 
     if (flagMode === 'resolve') {
-      if (rowIsFlagged) onRowSelect(woId)
+      if (woId && rowIsFlagged) onRowSelect(woId)
       return
     }
 
-    setExpandedWoId((currentWoId) =>
-      currentWoId === woId ? null : woId,
+    const rowId = getRowId(row)
+    if (!rowId) return
+
+    setExpandedRowId((currentRowId) =>
+      currentRowId === rowId ? null : rowId,
     )
   }
 
   const getRowClass = (row) => {
+    const woId = normalizeWoId(row?.wo_id)
     const rowIsFlagged = isActiveFlag(row?.has_active_flag)
-    const rowIsSelected = normalizedSelectedWoIds.has(
-      normalizeWoId(row?.wo_id),
-    )
+    const rowIsSelected = normalizedSelectedWoIds.has(woId)
     const deadlineState = getDeadlineState(row)
 
     let className =
       'border-b border-slate-100 transition-colors '
 
     if (flagMode === 'add') {
+      if (!woId) {
+        return className + 'cursor-not-allowed opacity-30'
+      }
+
       if (rowIsFlagged) {
         return (
           className +
@@ -706,7 +799,7 @@ export default function WorkOrderTable({
     className = '',
     align = 'left',
   }) => {
-    const isSortable = SORTABLE_FIELDS.has(field)
+    const isSortable = sortTypes.has(field)
     const isActiveSort = sortField === field
 
     const alignmentClass =
@@ -770,33 +863,15 @@ export default function WorkOrderTable({
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50">
             <tr className="border-b border-slate-200">
-              <TableHeader field="wo_id">WO ID</TableHeader>
-              <TableHeader field="item_code">Item Code</TableHeader>
-              <TableHeader field="dept_in_date">In Date</TableHeader>
-              <TableHeader field="wo_ageing_days">
-                WO Ageing
-              </TableHeader>
-              <TableHeader field="wo_target_date">
-                WO Due Dt
-              </TableHeader>
-              <TableHeader field="dept_target_date">
-                Dept Due Dt
-              </TableHeader>
-              <TableHeader field="dept_ageing_days">
-                Dept Ageing
-              </TableHeader>
-              <TableHeader field="planned_qty" align="right">
-                Qty
-              </TableHeader>
-              <TableHeader field="next_dept">
-                Next Department
-              </TableHeader>
-              <TableHeader field="priority">Priority</TableHeader>
-              <TableHeader field="status">Status</TableHeader>
-              <TableHeader field="">Alerts</TableHeader>
-              <TableHeader field="" align="center">
-                Flags
-              </TableHeader>
+              {columns.map((column) => (
+                <TableHeader
+                  key={column.key}
+                  field={column.sortType ? column.key : ''}
+                  align={column.align}
+                >
+                  {column.label}
+                </TableHeader>
+              ))}
             </tr>
           </thead>
 
@@ -804,10 +879,10 @@ export default function WorkOrderTable({
             {tableItems.length === 0 ? (
               <tr>
                 <td
-                  colSpan={TABLE_COLUMN_COUNT}
+                  colSpan={columns.length}
                   className="px-4 py-10 text-center text-sm text-slate-400"
                 >
-                  No matching work orders.
+                  {emptyMessage}
                 </td>
               </tr>
             ) : (
@@ -819,7 +894,7 @@ export default function WorkOrderTable({
                       aria-hidden="true"
                     >
                       <td
-                        colSpan={TABLE_COLUMN_COUNT}
+                        colSpan={columns.length}
                         style={{
                           height: `${FULLSCREEN_SPACER_ROW_HEIGHT_PX}px`,
                         }}
@@ -833,16 +908,15 @@ export default function WorkOrderTable({
                   rowIndex,
                   cycleIndex,
                 } = item
-                const woId = normalizeWoId(row?.wo_id)
-                const rowIsFlagged = isActiveFlag(
-                  row?.has_active_flag,
-                )
+                const rowId = getRowId(row)
                 const rowIsSelected =
-                  normalizedSelectedWoIds.has(woId)
+                  normalizedSelectedWoIds.has(
+                    normalizeWoId(row?.wo_id),
+                  )
 
                 const rowKey = isFullscreen
-                  ? `fullscreen-${cycleIndex}-${woId || 'row'}-${rowIndex}`
-                  : `${woId || 'row'}-${rowIndex}`
+                  ? `fullscreen-${cycleIndex}-${rowId || 'row'}-${rowIndex}`
+                  : `${rowId || 'row'}-${rowIndex}`
 
                 return (
                   <Fragment key={rowKey}>
@@ -865,119 +939,23 @@ export default function WorkOrderTable({
                       }
                       aria-selected={rowIsSelected || undefined}
                     >
-                      <td className="px-3 py-3">
-                        <span className="text-xs font-bold tracking-wide text-slate-800">
-                          {woId || '—'}
-                        </span>
-                      </td>
-
-                      <td className="whitespace-nowrap px-3 py-3 text-sm font-medium text-slate-700">
-                        {normalizeText(row?.item_code) || '—'}
-                      </td>
-
-                      <td className="whitespace-nowrap px-3 py-3 text-sm text-slate-600">
-                        {formatDate(row?.dept_in_date)}
-                      </td>
-
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <span
-                          className={`text-sm font-semibold ${getAgeingTextClass(
-                            row?.wo_ageing_days,
-                            14,
-                            30,
-                          )}`}
+                      {columns.map((column) => (
+                        <td
+                          key={column.key}
+                          className={column.className}
                         >
-                          {formatAgeingCompact(
-                            row?.wo_ageing_days,
-                          )}
-                        </span>
-                      </td>
-
-                      <td className="whitespace-nowrap px-3 py-3 text-sm text-slate-600">
-                        {formatDate(row?.wo_target_date)}
-                      </td>
-
-                      <td className="whitespace-nowrap px-3 py-3 text-sm text-slate-600">
-                        {formatDate(row?.dept_target_date)}
-                      </td>
-
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <span
-                          className={`text-sm font-semibold ${getAgeingTextClass(
-                            row?.dept_ageing_days,
-                            7,
-                            14,
-                          )}`}
-                        >
-                          {formatAgeingCompact(
-                            row?.dept_ageing_days,
-                          )}
-                        </span>
-                      </td>
-
-                      <td className="px-3 py-3 text-right text-sm text-slate-700">
-                        {formatQuantity(row?.planned_qty)}
-                      </td>
-
-                      <td className="px-3 py-3">
-                        {row?.next_dept ? (
-                          <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            {row.next_dept}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-3 py-3">
-                        <PriorityBadge priority={row?.priority} />
-                      </td>
-
-                      <td className="px-3 py-3">
-                        <StatusBadge status={row?.status} />
-                      </td>
-
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {row?.mi_alert && <AlertBadge type="MI" />}
-                          {row?.qc_alert && <AlertBadge type="QC" />}
-
-                          {!row?.mi_alert && !row?.qc_alert && (
-                            <span className="text-sm text-slate-300">
-                              —
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="px-3 py-3 text-center">
-                        {rowIsFlagged ? (
-                          <span
-                            title="This work order has an active flag"
-                            aria-label="Active flag"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-red-50"
-                          >
-                            <CircleAlert
-                              size={19}
-                              strokeWidth={2.5}
-                              className="text-red-600"
-                            />
-                          </span>
-                        ) : (
-                          <span className="text-sm text-slate-300">
-                            —
-                          </span>
-                        )}
-                      </td>
+                          {column.render(row)}
+                        </td>
+                      ))}
                     </tr>
 
-                    {!flagMode && expandedWoId === woId && (
+                    {!flagMode && expandedRowId === rowId && (
                       <tr>
                         <td
-                          colSpan={TABLE_COLUMN_COUNT}
+                          colSpan={columns.length}
                           className="p-0"
                         >
-                          <ExpandedRow row={row} />
+                          {renderExpandedRow(row)}
                         </td>
                       </tr>
                     )}

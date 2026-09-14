@@ -7,6 +7,17 @@ export const DEPARTMENTS = [
   'EDM',
 ]
 
+export const QC_DEPARTMENT = 'QC'
+
+// Google Sheets edited on the Edit Data page. Only the required ones must be
+// committed before Post Data.
+export const EDIT_SHEETS = [
+  { key: 'wos', label: 'Work Order Summary Report', shortLabel: 'WOS', required: true },
+  { key: 'ows', label: 'Operation Wise WIP Status', shortLabel: 'OWS', required: true },
+  { key: 'grn_qc', label: 'Pending Purchase GRN QC', shortLabel: 'GRN QC', required: false },
+  { key: 'wo_mi', label: 'Work Order vs Material Issue', shortLabel: 'WO MI', required: false },
+]
+
 // "SHEET METAL" -> "sheet-metal" (for URLs)
 export const deptToSlug = (dept) =>
   dept.toLowerCase().replace(/ /g, '-')
