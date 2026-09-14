@@ -641,7 +641,7 @@ export default function WorkOrderTable({
       if (rowIsSelected) {
         return (
           className +
-          'cursor-pointer border-l-2 border-orange-400 bg-orange-50'
+          'cursor-pointer border-l-2 border-orange-400 bg-orange-100'
         )
       }
 
@@ -656,7 +656,7 @@ export default function WorkOrderTable({
       if (rowIsSelected) {
         return (
           className +
-          'cursor-pointer border-l-2 border-green-400 bg-green-50'
+          'cursor-pointer border-l-2 border-green-400 bg-green-100'
         )
       }
 
