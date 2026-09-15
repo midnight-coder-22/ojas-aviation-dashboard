@@ -28,6 +28,16 @@ import {
 
 const ROWS_OPTIONS = [10, 25, 50]
 
+/*
+ * A `sticky` column (Flags) stays pinned to the right edge while narrower
+ * screens scroll the table sideways. Body cells inherit the row colour, so
+ * every row branch in getRowClass sets an opaque background.
+ */
+const STICKY_HEADER_CLASS =
+  'sticky right-0 z-20 bg-slate-50 shadow-[inset_1px_0_0_#e2e8f0]'
+const STICKY_CELL_CLASS =
+  'sticky right-0 z-[1] bg-inherit shadow-[inset_1px_0_0_#f1f5f9]'
+
 /* Fullscreen infinite-scroll settings. */
 const AUTO_SCROLL_PIXELS_PER_SECOND = 18
 const AUTO_SCROLL_START_DELAY_MS = 1500
@@ -222,7 +232,7 @@ const WORK_ORDER_COLUMNS = [
     key: 'wo_id',
     label: 'WO ID',
     sortType: 'text',
-    className: 'px-2 py-3 2xl:px-3',
+    className: 'px-2 py-3 min-[1700px]:px-3',
     render: (row) => (
       <span className="text-xs font-bold tracking-wide text-slate-800">
         {normalizeWoId(row?.wo_id) || '—'}
@@ -234,21 +244,21 @@ const WORK_ORDER_COLUMNS = [
     label: 'Item Code',
     sortType: 'text',
     className:
-      'whitespace-nowrap px-2 py-3 2xl:px-3 text-sm font-medium text-slate-700',
+      'whitespace-nowrap px-2 py-3 min-[1700px]:px-3 text-sm font-medium text-slate-700',
     render: (row) => renderTruncated(normalizeText(row?.item_code)),
   },
   {
     key: 'dept_in_date',
     label: 'In Date',
     sortType: 'date',
-    className: 'whitespace-nowrap px-2 py-3 2xl:px-3 text-sm text-slate-600',
+    className: 'whitespace-nowrap px-2 py-3 min-[1700px]:px-3 text-sm text-slate-600',
     render: (row) => formatDate(row?.dept_in_date),
   },
   {
     key: 'wo_ageing_days',
     label: 'WO Ageing',
     sortType: 'number',
-    className: 'whitespace-nowrap px-2 py-3 2xl:px-3',
+    className: 'whitespace-nowrap px-2 py-3 min-[1700px]:px-3',
     render: (row) => (
       <span
         className={`text-sm font-semibold ${getAgeingTextClass(
@@ -265,21 +275,21 @@ const WORK_ORDER_COLUMNS = [
     key: 'wo_target_date',
     label: 'WO Due Dt',
     sortType: 'date',
-    className: 'whitespace-nowrap px-2 py-3 2xl:px-3 text-sm text-slate-600',
+    className: 'whitespace-nowrap px-2 py-3 min-[1700px]:px-3 text-sm text-slate-600',
     render: (row) => formatDate(row?.wo_target_date),
   },
   {
     key: 'dept_target_date',
     label: 'Dept Due Dt',
     sortType: 'date',
-    className: 'whitespace-nowrap px-2 py-3 2xl:px-3 text-sm text-slate-600',
+    className: 'whitespace-nowrap px-2 py-3 min-[1700px]:px-3 text-sm text-slate-600',
     render: (row) => formatDate(row?.dept_target_date),
   },
   {
     key: 'dept_ageing_days',
     label: 'Dept Ageing',
     sortType: 'number',
-    className: 'whitespace-nowrap px-2 py-3 2xl:px-3',
+    className: 'whitespace-nowrap px-2 py-3 min-[1700px]:px-3',
     render: (row) => (
       <span
         className={`text-sm font-semibold ${getAgeingTextClass(
@@ -297,34 +307,34 @@ const WORK_ORDER_COLUMNS = [
     label: 'Qty',
     sortType: 'number',
     align: 'right',
-    className: 'px-2 py-3 2xl:px-3 text-right text-sm text-slate-700',
+    className: 'px-2 py-3 min-[1700px]:px-3 text-right text-sm text-slate-700',
     render: (row) => formatQuantity(row?.planned_qty),
   },
   {
     key: 'next_dept',
     label: 'Next Department',
     sortType: 'text',
-    className: 'px-2 py-3 2xl:px-3',
+    className: 'px-2 py-3 min-[1700px]:px-3',
     render: (row) => renderDeptChip(row?.next_dept),
   },
   {
     key: 'priority',
     label: 'Priority',
     sortType: 'text',
-    className: 'px-2 py-3 2xl:px-3',
+    className: 'px-2 py-3 min-[1700px]:px-3',
     render: (row) => <PriorityBadge priority={row?.priority} />,
   },
   {
     key: 'status',
     label: 'Status',
     sortType: 'text',
-    className: 'px-2 py-3 2xl:px-3',
+    className: 'px-2 py-3 min-[1700px]:px-3',
     render: (row) => <StatusBadge status={row?.status} />,
   },
   {
     key: 'alerts',
     label: 'Alerts',
-    className: 'px-2 py-3 2xl:px-3',
+    className: 'px-2 py-3 min-[1700px]:px-3',
     render: (row) => (
       <div className="flex items-center gap-1.5">
         {row?.mi_alert && <AlertBadge type="MI" />}
@@ -722,7 +732,7 @@ export default function WorkOrderTable({
 
     if (flagMode === 'add') {
       if (!woId) {
-        return className + 'cursor-not-allowed opacity-30'
+        return className + 'cursor-not-allowed bg-white opacity-30'
       }
 
       if (rowIsFlagged) {
@@ -739,12 +749,12 @@ export default function WorkOrderTable({
         )
       }
 
-      return className + 'cursor-pointer hover:bg-orange-50'
+      return className + 'cursor-pointer bg-white hover:bg-orange-50'
     }
 
     if (flagMode === 'resolve') {
       if (!rowIsFlagged) {
-        return className + 'cursor-not-allowed opacity-30'
+        return className + 'cursor-not-allowed bg-white opacity-30'
       }
 
       if (rowIsSelected) {
@@ -775,7 +785,7 @@ export default function WorkOrderTable({
       )
     }
 
-    return className + 'cursor-pointer hover:bg-slate-50'
+    return className + 'cursor-pointer bg-white hover:bg-slate-50'
   }
 
   const SortIcon = ({ field }) => {
@@ -827,7 +837,7 @@ export default function WorkOrderTable({
               : 'descending'
             : undefined
         }
-        className={`whitespace-nowrap px-2 py-3 2xl:px-3 text-xs font-semibold uppercase tracking-wide text-slate-500 ${alignmentClass} ${className}`}
+        className={`whitespace-nowrap px-2 py-3 min-[1700px]:px-3 text-xs font-semibold uppercase tracking-wide text-slate-500 ${alignmentClass} ${className}`}
       >
         {isSortable ? (
           <button
@@ -869,6 +879,7 @@ export default function WorkOrderTable({
                   key={column.key}
                   field={column.sortType ? column.key : ''}
                   align={column.align}
+                  className={column.sticky ? STICKY_HEADER_CLASS : ''}
                 >
                   {column.label}
                 </TableHeader>
@@ -943,7 +954,11 @@ export default function WorkOrderTable({
                       {columns.map((column) => (
                         <td
                           key={column.key}
-                          className={column.className}
+                          className={
+                            column.sticky
+                              ? `${column.className} ${STICKY_CELL_CLASS}`
+                              : column.className
+                          }
                         >
                           {column.render(row)}
                         </td>

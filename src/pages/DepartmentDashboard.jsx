@@ -18,7 +18,8 @@ import { useDeptFlags } from '../hooks/useDeptFlags'
 import { useIncomingFlow } from '../hooks/useIncomingFlow'
 import { useDashboard } from '../context/DashboardContext'
 import { slugToDept } from '../utils/constants'
-import { formatDeptHeading } from '../utils/formatters'
+import DataRefreshed from '../components/ui/DataRefreshed'
+import { formatDeptHeading, latestTimestamp } from '../utils/formatters'
 import {
   buildPriorityBreakdown,
   filterWorkOrders,
@@ -51,6 +52,11 @@ export default function DepartmentDashboard() {
   const incomingFlow = incomingFlowQuery.data
   const unfilteredRecordCount =
     deptQuery.data?.record_count ?? rawWorkOrders.length
+
+  const lastRefreshed = useMemo(
+    () => latestTimestamp(rawWorkOrders.map((row) => row.last_refreshed)),
+    [rawWorkOrders],
+  )
 
   const activeFlagIds = useMemo(() => {
     const flags = flagsQuery.data ?? EMPTY_FLAGS
@@ -210,10 +216,11 @@ export default function DepartmentDashboard() {
           ${db.isFullscreen ? 'py-3' : 'pb-2 pt-2'}
         `}
       >
-        <div className="shrink-0">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold leading-tight text-slate-900">
             {formatDeptHeading(deptName)}
           </h1>
+          <DataRefreshed timestamp={lastRefreshed} />
         </div>
 
         <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

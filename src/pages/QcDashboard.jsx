@@ -16,7 +16,7 @@ import { useDeptFlags } from '../hooks/useDeptFlags'
 import { useDashboard } from '../context/DashboardContext'
 import { QC_DEPARTMENT } from '../utils/constants'
 import { toggleFilterValue } from '../utils/dashboardFilters'
-import { formatRelative } from '../utils/formatters'
+import DataRefreshed from '../components/ui/DataRefreshed'
 import {
   NO_DATE_BAND,
   QC_TYPES,
@@ -275,11 +275,7 @@ export default function QcDashboard() {
             QC Department
           </h1>
 
-          {lastRefreshed && (
-            <span className="text-xs text-slate-400">
-              Data refreshed {formatRelative(lastRefreshed)}
-            </span>
-          )}
+          <DataRefreshed timestamp={lastRefreshed} />
 
           {activeFilterLabels.length > 0 && (
             <div className="flex flex-wrap gap-1.5">

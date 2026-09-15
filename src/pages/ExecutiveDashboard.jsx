@@ -15,6 +15,8 @@ import { useAllSummary } from '../hooks/useAllSummary'
 import { useAuth }       from '../context/AuthContext'
 import { useFullscreen } from '../hooks/useFullscreen'
 import { deptToSlug }    from '../utils/constants'
+import { latestTimestamp } from '../utils/formatters'
+import DataRefreshed   from '../components/ui/DataRefreshed'
 
 export default function ExecutiveDashboard() {
   const { data: allSummaries = [], isLoading, isError, refetch, isFetching } = useAllSummary()
@@ -87,6 +89,13 @@ export default function ExecutiveDashboard() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Executive Dashboard</h1>
             <p className="text-sm text-slate-500 mt-1">Cross-department operational overview</p>
+            <div className="mt-1">
+              <DataRefreshed
+                timestamp={latestTimestamp(
+                  allSummaries.map((summary) => summary.last_refreshed),
+                )}
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={enterFullscreen}

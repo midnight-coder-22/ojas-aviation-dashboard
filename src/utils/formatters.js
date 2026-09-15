@@ -90,6 +90,23 @@ export const avgField = (rows, field) => {
   )
 }
 
+/* The most recent of several ISO timestamps (e.g. every row's last_refreshed). */
+export const latestTimestamp = (values) => {
+  let latest = null
+  let latestTime = -Infinity
+
+  for (const value of values ?? []) {
+    const time = value ? Date.parse(value) : NaN
+
+    if (Number.isFinite(time) && time > latestTime) {
+      latest = value
+      latestTime = time
+    }
+  }
+
+  return latest
+}
+
 export const formatAgeingCompact = (days) => {
   if (days === null || days === undefined) return '—'
   return `${days}d`

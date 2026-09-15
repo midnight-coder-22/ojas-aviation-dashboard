@@ -3,8 +3,8 @@ import { CircleAlert } from 'lucide-react'
 /*
  * Pieces shared by WorkOrderTable column sets. A column renders one cell per
  * row: { key, label, className, render, sortType?: 'text' | 'number' | 'date',
- * align? }. Only columns with a sortType get a sortable header, and they sort
- * on row[key].
+ * align?, sticky? }. Only columns with a sortType get a sortable header, and
+ * they sort on row[key]. A sticky column is pinned to the table's right edge.
  */
 
 function normalizeText(value) {
@@ -47,10 +47,10 @@ export function getAgeingTextClass(
   return 'text-slate-600'
 }
 
-/* Long codes and names truncate below 2xl so every column fits on a laptop. */
+/* Long codes and names truncate below 1700px so the columns fit on laptops. */
 export function renderTruncated(
   text,
-  className = 'max-w-[10rem] 2xl:max-w-none',
+  className = 'max-w-[10rem] min-[1700px]:max-w-none',
 ) {
   if (!text) return '—'
 
@@ -77,7 +77,8 @@ export const FLAGS_COLUMN = {
   key: 'has_active_flag',
   label: 'Flags',
   align: 'center',
-  className: 'px-2 py-3 text-center 2xl:px-3',
+  sticky: true,
+  className: 'px-2 py-3 text-center min-[1700px]:px-3',
   render: (row) =>
     isActiveFlag(row?.has_active_flag) ? (
       <span
