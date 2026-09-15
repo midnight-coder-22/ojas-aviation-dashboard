@@ -9,13 +9,20 @@ export const DEPARTMENTS = [
 
 export const QC_DEPARTMENT = 'QC'
 
-// Google Sheets edited on the Edit Data page. Only the required ones must be
-// committed before Post Data.
+// Google Sheets edited on the Edit Data page (keys match the API's
+// SHEET_CONFIG). Only the required ones must be committed before Post Data.
 export const EDIT_SHEETS = [
-  { key: 'wos', label: 'Work Order Summary Report', shortLabel: 'WOS', required: true },
-  { key: 'ows', label: 'Operation Wise WIP Status', shortLabel: 'OWS', required: true },
-  { key: 'grn_qc', label: 'Pending Purchase GRN QC', shortLabel: 'GRN QC', required: false },
-  { key: 'wo_mi', label: 'Work Order vs Material Issue', shortLabel: 'WO MI', required: false },
+  { key: 'wos', group: 'Production', label: 'Work Order Summary Report', shortLabel: 'WOS', required: true },
+  { key: 'ows', group: 'Production', label: 'Operation Wise WIP Status', shortLabel: 'OWS', required: true },
+  { key: 'grn_qc', group: 'Quality', label: 'Pending Purchase GRN QC', shortLabel: 'GRN QC', required: false },
+  { key: 'vendor_inward', group: 'Quality', label: 'Vendor Outsource Inward', shortLabel: 'Vendor Inward', required: false },
+  { key: 'pdi', group: 'Quality', label: 'PDI Summary', shortLabel: 'PDI', required: false },
+  { key: 'wo_mi', group: 'Stores', label: 'Work Order vs Material Issue', shortLabel: 'WO MI', required: false },
+  { key: 'material_issue', group: 'Stores', label: 'Material Issue List', shortLabel: 'Material Issue', required: false },
+  { key: 'po_grn', group: 'Stores', label: 'PO vs GRN', shortLabel: 'PO vs GRN', required: false },
+  { key: 'material_return', group: 'Stores', label: 'Shop Floor Material Return', shortLabel: 'Material Return', required: false },
+  { key: 'issue_vs_return', group: 'Stores', label: 'Issue vs Return', shortLabel: 'Issue vs Return', required: false },
+  { key: 'cust_po_wo', group: 'Sales', label: 'Pending Customer PO vs WO', shortLabel: 'Cust PO vs WO', required: false },
 ]
 
 // "SHEET METAL" -> "sheet-metal" (for URLs)

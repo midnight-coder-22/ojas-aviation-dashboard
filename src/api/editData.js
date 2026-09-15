@@ -1,15 +1,7 @@
 import apiClient from './client'
 
 
-const SHEET_PATHS = {
-  wos: 'wos',
-  ows: 'ows',
-  grn_qc: 'grn-qc',
-  wo_mi: 'wo-mi',
-}
-
-
-// GET /api/edit-data/{wos | ows | grn-qc | wo-mi}
+// GET /api/edit-data/sheet/{sheet key}
 //
 // Returns:
 // {
@@ -21,7 +13,7 @@ const SHEET_PATHS = {
 
 export const fetchEditSheet = async (sheetKey) => {
   const res = await apiClient.get(
-    `/api/edit-data/${SHEET_PATHS[sheetKey]}`,
+    `/api/edit-data/sheet/${sheetKey}`,
   )
 
   return res.data

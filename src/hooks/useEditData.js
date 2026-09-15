@@ -13,12 +13,16 @@ const sharedQueryOptions = {
   refetchOnReconnect: false,
 }
 
-/* One query per Edit Data sheet, keyed by sheet key. */
-export const useEditData = () => {
+/*
+ * One query per Edit Data sheet, keyed by sheet key. A sheet is fetched only
+ * once it has been opened, so a page visit costs one API call per sheet used.
+ */
+export const useEditData = (openedSheets) => {
   const results = useQueries({
     queries: EDIT_SHEETS.map(({ key }) => ({
       queryKey: [`edit-${key}`],
       queryFn: () => fetchEditSheet(key),
+      enabled: openedSheets.has(key),
       ...sharedQueryOptions,
     })),
   })

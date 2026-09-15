@@ -52,6 +52,16 @@ function mapSheets(createValue) {
 }
 
 
+/* Loads one sheet's API payload into the page state whenever it changes. */
+function SheetLoader({ sheetKey, payload, onLoad }) {
+  useEffect(() => {
+    onLoad(sheetKey, payload)
+  }, [sheetKey, payload, onLoad])
+
+  return null
+}
+
+
 function cloneMatrix(matrix) {
   return matrix.map(row => [...row])
 }
@@ -180,7 +190,6 @@ export default function EditDataPage() {
   const { showToast } =
     useContext(ToastContext)
 
-  const { sheets } = useEditData()
 
 
   // ---------------------------------------------------------------------------
@@ -221,6 +230,17 @@ export default function EditDataPage() {
   ] = useState(
     () => mapSheets(() => false),
   )
+
+
+  const [
+    openedSheets,
+    setOpenedSheets,
+  ] = useState(
+    () => new Set(['wos']),
+  )
+
+
+  const { sheets } = useEditData(openedSheets)
 
 
   // ---------------------------------------------------------------------------
@@ -303,32 +323,6 @@ export default function EditDataPage() {
       },
       [],
     )
-
-
-  const wosPayload = sheets.wos.data
-  const owsPayload = sheets.ows.data
-  const grnQcPayload = sheets.grn_qc.data
-  const woMiPayload = sheets.wo_mi.data
-
-
-  useEffect(() => {
-    loadSheetPayload('wos', wosPayload)
-  }, [wosPayload, loadSheetPayload])
-
-
-  useEffect(() => {
-    loadSheetPayload('ows', owsPayload)
-  }, [owsPayload, loadSheetPayload])
-
-
-  useEffect(() => {
-    loadSheetPayload('grn_qc', grnQcPayload)
-  }, [grnQcPayload, loadSheetPayload])
-
-
-  useEffect(() => {
-    loadSheetPayload('wo_mi', woMiPayload)
-  }, [woMiPayload, loadSheetPayload])
 
 
   // ---------------------------------------------------------------------------
@@ -459,6 +453,13 @@ export default function EditDataPage() {
     nextSheet => {
       setActiveSheet(
         nextSheet,
+      )
+
+      setOpenedSheets(
+        previous =>
+          previous.has(nextSheet)
+            ? previous
+            : new Set(previous).add(nextSheet),
       )
     }
 
@@ -798,6 +799,15 @@ export default function EditDataPage() {
     <AppLayout scrollable>
       <div className="space-y-4 pt-4">
 
+        {EDIT_SHEETS.map(({ key }) => (
+          <SheetLoader
+            key={key}
+            sheetKey={key}
+            payload={sheets[key].data}
+            onLoad={loadSheetPayload}
+          />
+        ))}
+
         {/* --------------------------------------------------------------- */}
         {/* Header */}
         {/* --------------------------------------------------------------- */}
@@ -958,9 +968,11 @@ export default function EditDataPage() {
             </span>
 
 
-            {/* Commit status per sheet */}
+            {/* Commit status: required sheets always, optional ones once committed */}
 
-            {EDIT_SHEETS.map(sheet => (
+            {EDIT_SHEETS.filter(
+              sheet => sheet.required || committedSheets[sheet.key],
+            ).map(sheet => (
               <span
                 key={sheet.key}
                 className={
@@ -978,9 +990,7 @@ export default function EditDataPage() {
                 {sheet.shortLabel}{' '}
                 {committedSheets[sheet.key]
                   ? 'committed'
-                  : sheet.required
-                    ? 'not committed'
-                    : 'optional'}
+                  : 'not committed'}
               </span>
             ))}
 
