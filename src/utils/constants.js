@@ -126,6 +126,27 @@ export const CHART_COLORS = {
     Medium: '#F59E0B',
     High: '#EF4444',
   },
+  // Flagged reuses the app's existing "danger" red (flag badges, overdue
+  // rows); unflagged reuses the existing neutral gray (priority/status
+  // bars use the same slate-400) - not a fresh categorical pick, so it
+  // stays consistent with how flags already read everywhere else in the app.
+  flagStatus: {
+    flagged: '#EF4444',
+    unflagged: '#94A3B8',
+  },
+}
+
+// One color per department for the Executive KPI-4 trend lines. Fixed
+// assignment (never cycled/reordered) from the dataviz skill's validated
+// 6-slot categorical order - re-run scripts/validate_palette.js before
+// changing any of these.
+export const DEPARTMENT_COLORS = {
+  CNC: '#2a78d6',
+  VMC: '#eb6834',
+  CONVENTIONAL: '#1baf7a',
+  'SHEET METAL': '#eda100',
+  PRODUCTION: '#e87ba4',
+  EDM: '#008300',
 }
 
 export const STORAGE_AUTH = 'ojas_auth'

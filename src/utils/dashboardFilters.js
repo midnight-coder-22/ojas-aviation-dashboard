@@ -96,6 +96,20 @@ export function filterWorkOrders(rows, filters, omittedKey = null) {
   )
 }
 
+/* Same fields as the Incoming-WOs popup search: WO ID, item code/no, item description. */
+export function searchWorkOrders(rows, searchText) {
+  const query = normalizeText(searchText).toLowerCase()
+  const safeRows = Array.isArray(rows) ? rows : []
+
+  if (!query) return safeRows
+
+  return safeRows.filter((row) =>
+    [row?.wo_id, row?.item_code, row?.item_no, row?.wo_name].some((value) =>
+      normalizeText(value).toLowerCase().includes(query),
+    ),
+  )
+}
+
 export function buildPriorityBreakdown(rows) {
   return (Array.isArray(rows) ? rows : []).reduce(
     (breakdown, row) => {

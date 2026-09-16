@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { FilterX, Minimize2 } from 'lucide-react'
+import { FilterX, Minimize2, Search } from 'lucide-react'
 
 import AppLayout from '../components/layout/AppLayout'
 import LoadingSkeleton from '../components/ui/LoadingSkeleton'
@@ -23,6 +23,7 @@ import { formatDeptHeading, latestTimestamp } from '../utils/formatters'
 import {
   buildPriorityBreakdown,
   filterWorkOrders,
+  searchWorkOrders,
   toggleFilterValue,
 } from '../utils/dashboardFilters'
 
@@ -47,6 +48,7 @@ export default function DepartmentDashboard() {
     sourceDepartment: null,
     initialPriority: null,
   })
+  const [searchText, setSearchText] = useState('')
 
   const rawWorkOrders = deptQuery.data?.data ?? EMPTY_WORK_ORDERS
   const incomingFlow = incomingFlowQuery.data
@@ -77,9 +79,14 @@ export default function DepartmentDashboard() {
     }))
   }, [activeFlagIds, flagsQuery.isSuccess, rawWorkOrders])
 
+  const searchedWorkOrders = useMemo(
+    () => searchWorkOrders(workOrders, searchText),
+    [searchText, workOrders],
+  )
+
   const filteredWorkOrders = useMemo(
-    () => filterWorkOrders(workOrders, db.dashboardFilters),
-    [db.dashboardFilters, workOrders],
+    () => filterWorkOrders(searchedWorkOrders, db.dashboardFilters),
+    [db.dashboardFilters, searchedWorkOrders],
   )
 
   /*
@@ -88,18 +95,18 @@ export default function DepartmentDashboard() {
    * replacing a filter possible without first pressing Reset Filters.
    */
   const statusChartRows = useMemo(
-    () => filterWorkOrders(workOrders, db.dashboardFilters, 'status'),
-    [db.dashboardFilters, workOrders],
+    () => filterWorkOrders(searchedWorkOrders, db.dashboardFilters, 'status'),
+    [db.dashboardFilters, searchedWorkOrders],
   )
 
   const priorityChartRows = useMemo(
-    () => filterWorkOrders(workOrders, db.dashboardFilters, 'priority'),
-    [db.dashboardFilters, workOrders],
+    () => filterWorkOrders(searchedWorkOrders, db.dashboardFilters, 'priority'),
+    [db.dashboardFilters, searchedWorkOrders],
   )
 
   const flowChartRows = useMemo(
-    () => filterWorkOrders(workOrders, db.dashboardFilters, 'nextDept'),
-    [db.dashboardFilters, workOrders],
+    () => filterWorkOrders(searchedWorkOrders, db.dashboardFilters, 'nextDept'),
+    [db.dashboardFilters, searchedWorkOrders],
   )
 
   const priorityBreakdown = useMemo(
@@ -129,6 +136,7 @@ export default function DepartmentDashboard() {
       sourceDepartment: null,
       initialPriority: null,
     })
+    setSearchText('')
 
     return () => {
       db.setCurrentDept(null)
@@ -334,17 +342,31 @@ export default function DepartmentDashboard() {
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 py-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2">
             <span className="text-sm font-bold text-slate-800">
               Work Orders
             </span>
             <span className="text-xs text-slate-400">
               {filteredWorkOrders.length}
-              {db.hasActiveDashboardFilters
+              {db.hasActiveDashboardFilters || searchText.trim()
                 ? ` of ${unfilteredRecordCount}`
                 : ''}{' '}
               records
             </span>
+
+            <label className="relative ml-auto w-full max-w-xs">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Search WO ID, item code..."
+                aria-label="Search work orders"
+                className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              />
+            </label>
           </div>
 
           <div
@@ -379,11 +401,10 @@ export default function DepartmentDashboard() {
                 flagMode={db.flagMode}
                 selectedWoIds={db.selectedWoIds}
                 onRowSelect={handleRowSelect}
-                searchText=""
                 isFullscreen={
                   db.isFullscreen && !incomingPopup.isOpen
                 }
-                resetKey={JSON.stringify(db.dashboardFilters)}
+                resetKey={`${JSON.stringify(db.dashboardFilters)}|${searchText}`}
               />
             )}
           </div>

@@ -1,5 +1,6 @@
 import TopNav from './TopNav'
 import ToastContainer from '../ui/ToastContainer'
+import DataReminderBanner from '../executive/DataReminderBanner'
 
 /*
  * Dashboards size themselves to the viewport and scroll internally. Pages
@@ -14,11 +15,15 @@ export default function AppLayout({ children, scrollable = false }) {
       <div
         className={`flex flex-1 flex-col ${
           scrollable
-            ? 'mt-16 overflow-y-auto px-5 pb-8'
-            : 'overflow-hidden pt-16'
+            ? 'mt-16 overflow-y-auto'
+            : 'mt-16 overflow-hidden'
         }`}
       >
-        {children}
+        <DataReminderBanner />
+
+        <div className={`flex min-h-0 flex-1 flex-col ${scrollable ? 'px-5 pb-8' : 'overflow-hidden'}`}>
+          {children}
+        </div>
       </div>
 
       <ToastContainer />
