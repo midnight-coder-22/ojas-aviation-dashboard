@@ -42,11 +42,14 @@ export const useDelayOverdueTrend = (financialYear) => useQuery({
 
 // Polled independently of the Executive page itself - the Admin usually
 // lands on their own department dashboard, not Executive, so this needs to
-// stay live wherever AppLayout renders it.
+// stay live wherever AppLayout renders it. The answer changes at most once
+// a day (after 8:45 IST, or when data is posted), and each poll counts
+// against the API's daily request limit and scans every department table,
+// so every 30 minutes is plenty.
 export const useDataReminder = (enabled) => useQuery({
   queryKey: ['executive', 'data-reminder'],
   queryFn: fetchDataReminder,
   enabled,
-  staleTime: 2 * 60 * 1000,
-  refetchInterval: 5 * 60 * 1000,
+  staleTime: 15 * 60 * 1000,
+  refetchInterval: 30 * 60 * 1000,
 })

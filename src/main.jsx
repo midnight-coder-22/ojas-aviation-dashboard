@@ -6,6 +6,7 @@ import AuthProvider  from './context/AuthContext'
 import ToastProvider from './context/ToastContext'
 import DashboardProvider from './context/DashboardContext'
 import App           from './App'
+import { retryDelay, shouldRetryRequest } from './utils/retryPolicy'
 import './index.css'
 
 // alert('main.jsx loaded')
@@ -13,7 +14,8 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry:     2,
+      retry: shouldRetryRequest,
+      retryDelay,
       staleTime: 5 * 60 * 1000,
     },
   },

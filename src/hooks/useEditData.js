@@ -4,7 +4,6 @@ import { EDIT_SHEETS } from '../utils/constants'
 
 const sharedQueryOptions = {
   staleTime: 0,
-  retry: 1,
 
   // The user may leave this browser window to copy data from local Excel.
   // Do not automatically refetch and replace unsaved grid state when focus

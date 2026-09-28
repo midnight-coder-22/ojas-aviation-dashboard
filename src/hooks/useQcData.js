@@ -8,6 +8,4 @@ export const useQcData = () => useQuery({
   queryKey: ['dept-data', QC_DEPARTMENT],
   queryFn: fetchQcDashboard,
   staleTime: 5 * 60 * 1000,
-  retry: (failureCount, error) =>
-    error?.response?.status !== 503 && failureCount < 3,
 })
