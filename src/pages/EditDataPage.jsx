@@ -35,6 +35,7 @@ import {
 import { ToastContext } from '../context/ToastContext'
 import { useAuth } from '../context/AuthContext'
 import { EDIT_SHEETS } from '../utils/constants'
+import { findScientificNotationColumns } from '../utils/sheetQuality'
 
 
 const EMPTY_SHEET_STATE = {
@@ -577,6 +578,28 @@ export default function EditDataPage() {
       )
 
       return
+    }
+
+
+    const lostDigits =
+      findScientificNotationColumns(
+        cleanedMatrix,
+      )
+
+    if (lostDigits.length > 0) {
+      const columns = lostDigits
+        .map(({ column, count, example }) => `• ${column}: ${count} cells (e.g. ${example})`)
+        .join('\n')
+
+      const proceed = window.confirm(
+        `Some numbers in ${activeSheetLabel} were cut short by Excel's scientific notation:\n\n` +
+        `${columns}\n\n` +
+        'The full numbers are already lost, so these IDs will not match anything. ' +
+        'In Excel, widen those columns or format them as Text, copy again and paste here.\n\n' +
+        'Commit anyway?',
+      )
+
+      if (!proceed) return
     }
 
 

@@ -19,10 +19,12 @@ import { useIncomingFlow } from '../hooks/useIncomingFlow'
 import { useDashboard } from '../context/DashboardContext'
 import { slugToDept } from '../utils/constants'
 import DataRefreshed from '../components/ui/DataRefreshed'
+import VendorFilter from '../components/ui/VendorFilter'
 import { formatDeptHeading, latestTimestamp } from '../utils/formatters'
 import {
   buildPriorityBreakdown,
   filterWorkOrders,
+  hasVendorMovement,
   searchWorkOrders,
   toggleFilterValue,
 } from '../utils/dashboardFilters'
@@ -108,6 +110,13 @@ export default function DepartmentDashboard() {
     () => filterWorkOrders(searchedWorkOrders, db.dashboardFilters, 'nextDept'),
     [db.dashboardFilters, searchedWorkOrders],
   )
+
+  // Counts for the Vendor toggle: every other filter applies, not the toggle itself.
+  const vendorCounts = useMemo(() => {
+    const rows = filterWorkOrders(searchedWorkOrders, db.dashboardFilters, 'vendor')
+    const vendor = rows.filter(hasVendorMovement).length
+    return { all: rows.length, vendor, inhouse: rows.length - vendor }
+  }, [db.dashboardFilters, searchedWorkOrders])
 
   const priorityBreakdown = useMemo(
     () => buildPriorityBreakdown(priorityChartRows),
@@ -354,7 +363,15 @@ export default function DepartmentDashboard() {
               records
             </span>
 
-            <label className="relative ml-auto w-full max-w-xs">
+            <div className="ml-auto flex items-center">
+              <VendorFilter
+                value={db.dashboardFilters.vendor}
+                onChange={(value) => db.setDashboardFilter('vendor', value)}
+                counts={vendorCounts}
+              />
+            </div>
+
+            <label className="relative w-full max-w-xs">
               <Search
                 size={14}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"

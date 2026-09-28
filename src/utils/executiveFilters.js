@@ -1,10 +1,41 @@
 import { CHART_COLORS } from './constants'
+import { VENDOR_FILTER } from './dashboardFilters'
 
 export const EMPTY_EXECUTIVE_FILTERS = Object.freeze({
   department: null,
   status: null,
   flaggedOnly: null,
+  vendor: null,
 })
+
+const STATUSES = ['New', 'Ongoing', 'Delayed', 'Overdue', 'Completed']
+
+/*
+ * A department summary narrowed to vendor-involved or in-house WOs (the
+ * Vendor toggle). The API sends the vendor-involved part of every count;
+ * in-house is the rest.
+ */
+export function scopeSummaryByVendor(summary, vendorFilter) {
+  if (!summary || !vendorFilter) return summary
+
+  const vendorBreakdown = summary.vendor_status_breakdown ?? {}
+  const vendorTotal = Number(summary.vendor_wo_count) || 0
+  const vendorFlagged = Number(summary.vendor_flagged_count) || 0
+  const isVendor = vendorFilter === VENDOR_FILTER.VENDOR
+
+  const statusBreakdown = Object.fromEntries(STATUSES.map((status) => {
+    const all = Number(summary.status_breakdown?.[status] ?? (status === 'Ongoing' ? summary.status_breakdown?.InProcess : 0)) || 0
+    const vendor = Number(vendorBreakdown[status]) || 0
+    return [status, isVendor ? vendor : Math.max(0, all - vendor)]
+  }))
+
+  return {
+    ...summary,
+    total_wos: isVendor ? vendorTotal : Math.max(0, (Number(summary.total_wos) || 0) - vendorTotal),
+    flagged_count: isVendor ? vendorFlagged : Math.max(0, (Number(summary.flagged_count) || 0) - vendorFlagged),
+    status_breakdown: statusBreakdown,
+  }
+}
 
 // Same shape as PRIORITY_SERIES (utils/priorityChart.js) so
 // StandardPriorityBarChart can stack on flag status instead of priority.
@@ -36,14 +67,31 @@ export function getMiAgeingBand(ageingDays) {
  * department filter dims non-matching bars via the chart's activeCategory
  * prop rather than removing data, same convention as every other chart).
  */
-export function buildOverdueByDeptData(rows) {
+export function buildOverdueByDeptData(rows, vendorFilter = null) {
   const safeRows = Array.isArray(rows) ? rows : []
-  return safeRows.map((row) => ({
-    name: row.department,
-    flagged: Number(row.flagged) || 0,
-    unflagged: Number(row.unflagged) || 0,
-    total: Number(row.total) || 0,
-  }))
+  return safeRows.map((row) => {
+    const flaggedAll = Number(row.flagged) || 0
+    const unflaggedAll = Number(row.unflagged) || 0
+    const flaggedVendor = Number(row.vendor_flagged) || 0
+    const unflaggedVendor = Number(row.vendor_unflagged) || 0
+
+    const flagged = vendorFilter === VENDOR_FILTER.VENDOR ? flaggedVendor
+      : vendorFilter === VENDOR_FILTER.IN_HOUSE ? Math.max(0, flaggedAll - flaggedVendor)
+        : flaggedAll
+    const unflagged = vendorFilter === VENDOR_FILTER.VENDOR ? unflaggedVendor
+      : vendorFilter === VENDOR_FILTER.IN_HOUSE ? Math.max(0, unflaggedAll - unflaggedVendor)
+        : unflaggedAll
+
+    return { name: row.department, flagged, unflagged, total: flagged + unflagged }
+  })
+}
+
+/* KPI 2 rows narrowed by the Vendor toggle. */
+export function scopeMiPendingByVendor(rows, vendorFilter) {
+  const safeRows = Array.isArray(rows) ? rows : []
+  if (vendorFilter === VENDOR_FILTER.VENDOR) return safeRows.filter((row) => row.vendor_involved)
+  if (vendorFilter === VENDOR_FILTER.IN_HOUSE) return safeRows.filter((row) => !row.vendor_involved)
+  return safeRows
 }
 
 /*
@@ -52,7 +100,7 @@ export function buildOverdueByDeptData(rows) {
  * chart's only dimension is ageing band).
  */
 export function buildMiPendingAgeingData(rows, filters) {
-  const safeRows = Array.isArray(rows) ? rows : []
+  const safeRows = scopeMiPendingByVendor(rows, filters?.vendor)
   const scoped = filters?.department
     ? safeRows.filter((row) => row.department === filters.department)
     : safeRows

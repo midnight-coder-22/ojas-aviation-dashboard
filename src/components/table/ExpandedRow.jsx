@@ -4,6 +4,7 @@ import {
 } from '../../utils/formatters'
 import StatusBadge from '../ui/StatusBadge'
 import PriorityBadge from '../ui/PriorityBadge'
+import { describeVendorMovement } from './sharedColumns'
 
 const Field = ({ label, children }) => (
   <div>
@@ -73,6 +74,13 @@ export default function ExpandedRow({ row }) {
         <Field label="Active Flag">
           {row.has_active_flag ? 'Yes' : 'No'}
         </Field>
+
+        <Field label="Vendor Movement (F7)">
+          {describeVendorMovement(row) || 'None recorded'}
+        </Field>
+        {row.vendor_names && (
+          <Field label="Vendors">{row.vendor_names}</Field>
+        )}
       </div>
     </div>
   )

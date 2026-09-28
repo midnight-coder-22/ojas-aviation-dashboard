@@ -2,7 +2,25 @@ export const EMPTY_DASHBOARD_FILTERS = Object.freeze({
   status: null,
   priority: null,
   nextDept: null,
+  vendor: null,
 })
+
+/*
+ * Vendor filter values. A WO is vendor-involved when the F7 (57F4 inward)
+ * report shows material of it coming back from a job-work vendor since the
+ * WO started (the pipeline's vendor_lots > 0).
+ */
+export const VENDOR_FILTER = Object.freeze({ VENDOR: 'vendor', IN_HOUSE: 'inhouse' })
+
+export function hasVendorMovement(row) {
+  return Number(row?.vendor_lots) > 0
+}
+
+export function matchesVendorFilter(row, vendorFilter) {
+  if (vendorFilter === VENDOR_FILTER.VENDOR) return hasVendorMovement(row)
+  if (vendorFilter === VENDOR_FILTER.IN_HOUSE) return !hasVendorMovement(row)
+  return true
+}
 
 export const AGEING_BANDS = [
   { key: '0-7', label: '0-7' },
@@ -72,6 +90,13 @@ export function matchesDashboardFilters(row, filters, omittedKey = null) {
     omittedKey !== 'priority' &&
     filters.priority &&
     normalizePriority(row?.priority) !== filters.priority
+  ) {
+    return false
+  }
+
+  if (
+    omittedKey !== 'vendor' &&
+    !matchesVendorFilter(row, filters.vendor)
   ) {
     return false
   }

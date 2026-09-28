@@ -16,6 +16,7 @@ import PendingWatchlistTable from '../components/executive/PendingWatchlistTable
 import LossTrendChart from '../components/executive/LossTrendChart'
 import DelayOverdueTrendChart from '../components/executive/DelayOverdueTrendChart'
 import KpiPlaceholder from '../components/executive/KpiPlaceholder'
+import VendorFilter from '../components/ui/VendorFilter'
 
 import { useAllSummary } from '../hooks/useAllSummary'
 import {
@@ -30,7 +31,13 @@ import { useDashboard } from '../context/DashboardContext'
 import { useFullscreen } from '../hooks/useFullscreen'
 import { deptToSlug } from '../utils/constants'
 import { latestTimestamp } from '../utils/formatters'
-import { currentFinancialYear } from '../utils/executiveFilters'
+import {
+  buildOverdueByDeptData,
+  currentFinancialYear,
+  scopeMiPendingByVendor,
+  scopeSummaryByVendor,
+} from '../utils/executiveFilters'
+import { VENDOR_FILTER } from '../utils/dashboardFilters'
 
 function ChartLoadingCard({ className = 'h-[290px]' }) {
   return <div className={`animate-pulse rounded-xl border border-slate-200 bg-slate-200 ${className}`} />
@@ -79,6 +86,14 @@ export default function ExecutiveDashboard() {
   }
 
   const summaries = summaryQuery.data ?? []
+  // The Vendor toggle narrows the WO KPIs (cards, KPI 1, KPI 2); the
+  // watchlist and the two trends are not per-WO and ignore it.
+  const scopedSummaries = summaries.map((summary) => scopeSummaryByVendor(summary, filters.vendor))
+  const vendorCounts = {
+    all: summaries.reduce((sum, summary) => sum + (Number(summary.total_wos) || 0), 0),
+    vendor: summaries.reduce((sum, summary) => sum + (Number(summary.vendor_wo_count) || 0), 0),
+  }
+  vendorCounts.inhouse = vendorCounts.all - vendorCounts.vendor
   const isLoading = summaryQuery.isLoading
   const isError = summaryQuery.isError
 
@@ -95,6 +110,8 @@ export default function ExecutiveDashboard() {
     filters.department,
     filters.status,
     filters.flaggedOnly && 'Flagged only',
+    filters.vendor === VENDOR_FILTER.VENDOR && 'Vendor WOs',
+    filters.vendor === VENDOR_FILTER.IN_HOUSE && 'In-house WOs',
   ].filter(Boolean).join(' · ')
 
   return (
@@ -122,6 +139,11 @@ export default function ExecutiveDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <VendorFilter
+              value={filters.vendor}
+              onChange={(value) => db.setDashboardFilter('vendor', value)}
+              counts={summaryQuery.isSuccess ? vendorCounts : undefined}
+            />
             <button onClick={enterFullscreen}
               className="border border-slate-200 rounded-xl px-3 py-1.5 text-sm text-slate-600 flex items-center gap-1.5 hover:bg-slate-50">
               <Maximize2 size={14} /> Fullscreen
@@ -148,7 +170,7 @@ export default function ExecutiveDashboard() {
             </div>
           ) : (
             <DepartmentCardStrip
-              summaries={summaries}
+              summaries={scopedSummaries}
               filters={filters}
               onSetFilter={db.setDashboardFilter}
               onSetFilterGroup={db.setDashboardFilterGroup}
@@ -168,7 +190,7 @@ export default function ExecutiveDashboard() {
               <ChartCard
                 title="Overdue Work Orders by Department"
                 subtitle="Flagged vs unflagged"
-                metricValue={overdueQuery.data?.reduce((sum, row) => sum + row.total, 0) ?? 0}
+                metricValue={buildOverdueByDeptData(overdueQuery.data, filters.vendor).reduce((sum, row) => sum + row.total, 0)}
                 metricLabel="Overdue"
                 legendSeries={[
                   { key: 'unflagged', label: 'Unflagged', color: '#94A3B8' },
@@ -188,7 +210,7 @@ export default function ExecutiveDashboard() {
               <ChartCard
                 title="MI Pending vs Ageing"
                 subtitle="No input to production yet, by days since WO start"
-                metricValue={miPendingQuery.data?.length ?? 0}
+                metricValue={scopeMiPendingByVendor(miPendingQuery.data, filters.vendor).length}
                 metricLabel="WOs"
               >
                 <MiPendingAgeingChart rows={miPendingQuery.data ?? []} filters={filters} />

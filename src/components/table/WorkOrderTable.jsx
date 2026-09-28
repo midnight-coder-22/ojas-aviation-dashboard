@@ -15,6 +15,7 @@ import PriorityBadge from '../ui/PriorityBadge'
 import ExpandedRow from './ExpandedRow'
 import {
   FLAGS_COLUMN,
+  describeVendorMovement,
   formatQuantity,
   getAgeingTextClass,
   isActiveFlag,
@@ -202,7 +203,7 @@ function compareValues(
   )
 }
 
-function AlertBadge({ type }) {
+function AlertBadge({ type, title }) {
   const styles = {
     MI: {
       className: 'bg-orange-100 text-orange-700',
@@ -212,6 +213,10 @@ function AlertBadge({ type }) {
       className: 'bg-blue-100 text-blue-700',
       label: 'QC',
     },
+    VEN: {
+      className: 'bg-teal-100 text-teal-700',
+      label: 'VEN',
+    },
   }
 
   const style = styles[type]
@@ -219,6 +224,7 @@ function AlertBadge({ type }) {
 
   return (
     <span
+      title={title}
       className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-semibold ${style.className}`}
     >
       {style.label}
@@ -335,18 +341,25 @@ const WORK_ORDER_COLUMNS = [
     key: 'alerts',
     label: 'Alerts',
     className: 'px-2 py-3 min-[1700px]:px-3',
-    render: (row) => (
+    render: (row) => {
+      const vendorMovement = describeVendorMovement(row)
+
+      return (
       <div className="flex items-center gap-1.5">
         {row?.mi_alert && <AlertBadge type="MI" />}
         {row?.qc_alert && <AlertBadge type="QC" />}
+        {vendorMovement && (
+          <AlertBadge type="VEN" title={`At job-work vendor: ${vendorMovement}`} />
+        )}
 
-        {!row?.mi_alert && !row?.qc_alert && (
+        {!row?.mi_alert && !row?.qc_alert && !vendorMovement && (
           <span className="text-sm text-slate-300">
             —
           </span>
         )}
       </div>
-    ),
+      )
+    },
   },
   FLAGS_COLUMN,
 ]

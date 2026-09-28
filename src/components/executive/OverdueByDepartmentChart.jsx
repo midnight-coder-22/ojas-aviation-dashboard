@@ -11,7 +11,7 @@ const FLAG_LABEL = { flagged: 'Flagged', unflagged: 'Unflagged' }
  * binary split - the only honest breakdown the data supports.
  */
 export default function OverdueByDepartmentChart({ rows, filters, onSetFilter, onSetFilterGroup }) {
-  const data = buildOverdueByDeptData(rows).map((row) => addStackMeta(row, FLAG_STATUS_SERIES))
+  const data = buildOverdueByDeptData(rows, filters.vendor).map((row) => addStackMeta(row, FLAG_STATUS_SERIES))
 
   return (
     <StandardPriorityBarChart

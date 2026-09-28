@@ -1,7 +1,15 @@
 import apiClient from './client'
 import { deptToSlug } from '../utils/constants'
 
-// GET /api/flags/{dept}
+// GET /api/flags - every active flag. A WO has at most one active flag across
+// all departments (raising skips a WO flagged anywhere, resolving clears it
+// everywhere), so a page shows a WO as flagged whichever department raised it.
+export const fetchActiveFlags = async () => {
+  const res = await apiClient.get('/api/flags')
+  return res.data
+}
+
+// GET /api/flags/{dept} - only the flags raised in that department.
 export const fetchDeptFlags = async (dept) => {
   const res = await apiClient.get(`/api/flags/${deptToSlug(dept)}`)
   return res.data

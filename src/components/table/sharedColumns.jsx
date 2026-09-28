@@ -1,4 +1,5 @@
 import { CircleAlert } from 'lucide-react'
+import { formatDate } from '../../utils/formatters'
 
 /*
  * Pieces shared by WorkOrderTable column sets. A column renders one cell per
@@ -59,6 +60,19 @@ export function renderTruncated(
       {text}
     </span>
   )
+}
+
+/* "PL, HT · 3 lots · 21 days at vendors · back 24/08/26", or an empty string without vendor movement. */
+export function describeVendorMovement(row) {
+  const lots = Number(row?.vendor_lots)
+  if (!(lots > 0)) return ''
+
+  return [
+    normalizeText(row?.vendor_ops) || 'Outsourced',
+    `${lots} lot${lots === 1 ? '' : 's'}`,
+    Number.isFinite(Number(row?.vendor_days)) ? `${Number(row.vendor_days)} days at vendors` : null,
+    row?.last_vendor_in_date ? `back ${formatDate(row.last_vendor_in_date)}` : null,
+  ].filter(Boolean).join(' · ')
 }
 
 export function renderDeptChip(department) {

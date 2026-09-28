@@ -22,6 +22,7 @@ export const EDIT_SHEETS = [
   { key: 'po_grn', group: 'Stores', label: 'PO vs GRN', shortLabel: 'PO vs GRN', required: false },
   { key: 'material_return', group: 'Stores', label: 'Shop Floor Material Return', shortLabel: 'Material Return', required: false },
   { key: 'issue_vs_return', group: 'Stores', label: 'Issue vs Return', shortLabel: 'Issue vs Return', required: false },
+  { key: 'f7_inward', group: 'Stores', label: '57F4 Inward Summary (F7)', shortLabel: 'F7 Inward', required: false },
   { key: 'cust_po_wo', group: 'Sales', label: 'Pending Customer PO vs WO', shortLabel: 'Cust PO vs WO', required: false },
 ]
 
