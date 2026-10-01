@@ -1,6 +1,8 @@
 import {
   Fragment,
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -38,6 +40,27 @@ const STICKY_HEADER_CLASS =
   'sticky right-0 z-20 bg-slate-50 shadow-[inset_1px_0_0_#e2e8f0]'
 const STICKY_CELL_CLASS =
   'sticky right-0 z-[1] bg-inherit shadow-[inset_1px_0_0_#f1f5f9]'
+
+/*
+ * Fullscreen pinned rows: flagged work orders are lifted out of the
+ * scrolling cycles and stuck under the header, so they stay on screen
+ * while the rest of the table auto-scrolls past them.
+ */
+/*
+ * Sticky cells leave the row box behind, so each pinned cell needs its own
+ * opaque background (inherited from the row colour) to cover the rows
+ * scrolling underneath, plus its own bottom rule.
+ */
+const PINNED_CELL_CLASS =
+  'bg-inherit border-b border-red-200'
+/* The row's own flag marker scrolls away with the row box, so it is redrawn
+ * on the first pinned cell. */
+const PINNED_FIRST_CELL_CLASS = 'border-l-2 border-l-red-400'
+const PINNED_ROW_Z_INDEX = 5
+const PINNED_STICKY_CELL_Z_INDEX = 6
+const PINNED_ROW_FALLBACK_HEIGHT_PX = 44
+/* Keeps the pinned block from filling the screen on a heavily flagged day. */
+const MAX_PINNED_ROW_COUNT = 5
 
 /* Fullscreen infinite-scroll settings. */
 const AUTO_SCROLL_PIXELS_PER_SECOND = 18
@@ -389,8 +412,12 @@ export default function WorkOrderTable({
   const [expandedRowId, setExpandedRowId] = useState(null)
 
   const tableViewportRef = useRef(null)
+  const tableHeadRef = useRef(null)
+  const pinnedRowNodesRef = useRef([])
   const firstCycleStartRef = useRef(null)
   const secondCycleStartRef = useRef(null)
+
+  const [pinnedRowTops, setPinnedRowTops] = useState([])
 
   const sortTypes = useMemo(
     () =>
@@ -498,13 +525,35 @@ export default function WorkOrderTable({
     [pageStart, perPage, sorted],
   )
 
-  const displayedRows = isFullscreen ? sorted : pageData
+  /*
+   * In fullscreen the flagged work orders are pinned above the scrolling
+   * rows; flag mode keeps the plain sorted list so selecting rows and the
+   * red/green highlighting stay in one continuous table.
+   */
+  const pinnedRows = useMemo(() => {
+    if (!isFullscreen || flagMode) return []
+
+    return sorted
+      .filter((row) => isActiveFlag(row?.has_active_flag))
+      .slice(0, MAX_PINNED_ROW_COUNT)
+  }, [flagMode, isFullscreen, sorted])
+
+  const scrollRows = useMemo(() => {
+    if (!isFullscreen) return pageData
+    if (pinnedRows.length === 0) return sorted
+
+    const pinnedRowSet = new Set(pinnedRows)
+
+    return sorted.filter((row) => !pinnedRowSet.has(row))
+  }, [isFullscreen, pageData, pinnedRows, sorted])
+
+  const displayedRows = scrollRows
 
   const fullscreenCycleCount = useMemo(() => {
-    if (!isFullscreen || sorted.length === 0) return 1
+    if (!isFullscreen || scrollRows.length === 0) return 1
 
     const estimatedRowsPerCycle =
-      sorted.length + FULLSCREEN_SPACER_ROW_COUNT
+      scrollRows.length + FULLSCREEN_SPACER_ROW_COUNT
 
     const requiredCycleCount =
       1 +
@@ -517,7 +566,7 @@ export default function WorkOrderTable({
       MAX_FULLSCREEN_CYCLE_COUNT,
       Math.max(2, requiredCycleCount),
     )
-  }, [isFullscreen, sorted.length])
+  }, [isFullscreen, scrollRows.length])
 
   const tableItems = useMemo(() => {
     if (!isFullscreen) {
@@ -529,14 +578,20 @@ export default function WorkOrderTable({
       }))
     }
 
-    const items = []
+    const items = pinnedRows.map((row, rowIndex) => ({
+      type: 'row',
+      row,
+      rowIndex,
+      cycleIndex: 0,
+      pinnedIndex: rowIndex,
+    }))
 
     for (
       let cycleIndex = 0;
       cycleIndex < fullscreenCycleCount;
       cycleIndex += 1
     ) {
-      sorted.forEach((row, rowIndex) => {
+      scrollRows.forEach((row, rowIndex) => {
         items.push({
           type: 'row',
           row,
@@ -561,7 +616,13 @@ export default function WorkOrderTable({
     }
 
     return items
-  }, [fullscreenCycleCount, isFullscreen, pageData, sorted])
+  }, [
+    fullscreenCycleCount,
+    isFullscreen,
+    pageData,
+    pinnedRows,
+    scrollRows,
+  ])
 
   const showingStart = sorted.length === 0 ? 0 : pageStart + 1
   const showingEnd = Math.min(
@@ -575,6 +636,56 @@ export default function WorkOrderTable({
 
     viewport.scrollTop = 0
   }, [isFullscreen, searchText, sortDir, sortField, sorted])
+
+  /*
+   * Each pinned row sticks below the header and below the pinned rows
+   * above it, so their measured heights decide the sticky offsets.
+   */
+  const measurePinnedRowTops = useCallback(() => {
+    if (pinnedRows.length === 0) {
+      setPinnedRowTops((currentTops) =>
+        currentTops.length === 0 ? currentTops : [],
+      )
+      return
+    }
+
+    const headerHeight = tableHeadRef.current?.offsetHeight ?? 0
+    const nextTops = []
+    let offset = headerHeight
+
+    for (
+      let pinnedIndex = 0;
+      pinnedIndex < pinnedRows.length;
+      pinnedIndex += 1
+    ) {
+      nextTops.push(offset)
+
+      const rowNode = pinnedRowNodesRef.current[pinnedIndex]
+      offset +=
+        rowNode?.offsetHeight || PINNED_ROW_FALLBACK_HEIGHT_PX
+    }
+
+    setPinnedRowTops((currentTops) =>
+      currentTops.length === nextTops.length &&
+      currentTops.every((top, index) => top === nextTops[index])
+        ? currentTops
+        : nextTops,
+    )
+  }, [pinnedRows.length])
+
+  useLayoutEffect(() => {
+    measurePinnedRowTops()
+  }, [columns, measurePinnedRowTops, pinnedRows])
+
+  useEffect(() => {
+    if (pinnedRows.length === 0) return undefined
+
+    window.addEventListener('resize', measurePinnedRowTops)
+
+    return () => {
+      window.removeEventListener('resize', measurePinnedRowTops)
+    }
+  }, [measurePinnedRowTops, pinnedRows.length])
 
   /*
    * Infinite fullscreen scroll:
@@ -691,6 +802,7 @@ export default function WorkOrderTable({
     flagMode,
     fullscreenCycleCount,
     isFullscreen,
+    pinnedRowTops,
     searchText,
     sortDir,
     sortField,
@@ -885,7 +997,10 @@ export default function WorkOrderTable({
         }`}
       >
         <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50">
+          <thead
+            ref={tableHeadRef}
+            className="sticky top-0 z-10 bg-slate-50"
+          >
             <tr className="border-b border-slate-200">
               {columns.map((column) => (
                 <TableHeader
@@ -932,21 +1047,35 @@ export default function WorkOrderTable({
                   row,
                   rowIndex,
                   cycleIndex,
+                  pinnedIndex,
                 } = item
+                const isPinnedRow = pinnedIndex !== undefined
                 const rowId = getRowId(row)
                 const rowIsSelected =
                   normalizedSelectedWoIds.has(
                     normalizeWoId(row?.wo_id),
                   )
 
-                const rowKey = isFullscreen
-                  ? `fullscreen-${cycleIndex}-${rowId || 'row'}-${rowIndex}`
-                  : `${rowId || 'row'}-${rowIndex}`
+                const rowKey = isPinnedRow
+                  ? `pinned-${rowId || 'row'}-${pinnedIndex}`
+                  : isFullscreen
+                    ? `fullscreen-${cycleIndex}-${rowId || 'row'}-${rowIndex}`
+                    : `${rowId || 'row'}-${rowIndex}`
+
+                const pinnedTop = isPinnedRow
+                  ? pinnedRowTops[pinnedIndex]
+                  : undefined
 
                 return (
                   <Fragment key={rowKey}>
                     <tr
                       ref={(node) => {
+                        if (isPinnedRow) {
+                          pinnedRowNodesRef.current[pinnedIndex] =
+                            node
+                          return
+                        }
+
                         if (rowIndex !== 0) return
 
                         if (cycleIndex === 0) {
@@ -962,15 +1091,34 @@ export default function WorkOrderTable({
                       data-deadline-state={
                         getDeadlineState(row) || undefined
                       }
+                      data-pinned-flag={
+                        isPinnedRow ? 'true' : undefined
+                      }
                       aria-selected={rowIsSelected || undefined}
                     >
-                      {columns.map((column) => (
+                      {columns.map((column, columnIndex) => (
                         <td
                           key={column.key}
-                          className={
-                            column.sticky
-                              ? `${column.className} ${STICKY_CELL_CLASS}`
-                              : column.className
+                          className={[
+                            column.className,
+                            column.sticky ? STICKY_CELL_CLASS : '',
+                            isPinnedRow ? PINNED_CELL_CLASS : '',
+                            isPinnedRow && columnIndex === 0
+                              ? PINNED_FIRST_CELL_CLASS
+                              : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          style={
+                            isPinnedRow
+                              ? {
+                                  position: 'sticky',
+                                  top: `${pinnedTop ?? 0}px`,
+                                  zIndex: column.sticky
+                                    ? PINNED_STICKY_CELL_Z_INDEX
+                                    : PINNED_ROW_Z_INDEX,
+                                }
+                              : undefined
                           }
                         >
                           {column.render(row)}
